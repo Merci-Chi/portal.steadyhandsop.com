@@ -15,8 +15,9 @@ document.addEventListener('steadyhands:approve-preview',async e=>{
   const {data:{user},error:userError}=await supabase.auth.getUser();
   if(userError||!user){$('#approval-message').textContent='Please sign in again.';button.disabled=false;return}
   // Verify that this site is accessible to this client through preview RLS.
-  const found=await supabase.from('portal_previews').select('id,site_key').eq('id',id).eq('site_key',key).maybeSingle();
-  if(found.error||!found.data){$('#approval-message').textContent='This preview is not assigned to your verified company.';button.disabled=false;return}
+  let found=await supabase.from('portal_previews').select('id,site_key').eq('id',id).eq('site_key',key).maybeSingle();
+  if(!found.data){const claimed=await supabase.from('portal_preview_claims').select('id,site_key').eq('id',id).eq('site_key',key).eq('user_id',user.id).maybeSingle();if(claimed.data)found=claimed;}
+  if(!found.data){$('#approval-message').textContent='This preview is not assigned to your verified company.';button.disabled=false;return}
   const title='Preview Approved — '+key;
   const exists=await supabase.from('portal_service_requests').select('id').eq('user_id',user.id).eq('title',title).is('deleted_at',null).limit(1);
   if(exists.data?.length){$('#approval-message').textContent='This preview has already been approved.';button.disabled=false;return}
@@ -57,7 +58,7 @@ function purchaseMarkup(){
  const completed=completedCount();
  const list='<div class="journey-purchase-steps">'+purchaseSteps.map((x,i)=>'<div class="journey-purchase-stage '+(i===purchaseStep?'active':'')+' '+(i<completed?'complete':'')+'"><span class="stage-number">'+(i<completed?'✓':i+1)+'</span><span>'+x.title+'</span></div>').join('')+'</div><div class="journey-progress-caption"><span>Purchase progress</span><strong>'+completed+'/3 complete</strong></div><div class="journey-progress"><div style="width:'+(completed/3*100)+'%"></div></div>';
  let body='';
- if(completed===3){
+ if(completed===3){queueMicrotask(()=>window.dispatchEvent(new Event('steadyhands:purchase-complete')));
   body='<div class="journey-finish"><div class="journey-finish-icon">✓</div><h3>Everything is complete!</h3><p>Your agreement, website design payment, and hosting checkout have been confirmed.</p><div class="journey-finish-checks"><div>✓ Agreement signed</div><div>✓ Website design paid</div><div>✓ Hosting confirmed</div></div><div class="journey-finish-actions"><button type="button" class="primary" id="journey-download-confirmation">↓ Download Confirmation</button><button type="button" class="secondary" id="journey-return-home">Back to Overview</button></div></div>';
  }else if(purchaseStep===0&&signedAgreement){
   body='<div class="journey-signed"><span class="journey-signed-check">✓</span><div><h3>Agreement Signed</h3><p>Your October 9, 2026 agreement is saved. You do not need to sign again.</p></div></div><button type="button" id="journey-view-terms" class="secondary">View Terms</button>';
