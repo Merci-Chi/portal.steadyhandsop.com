@@ -21,7 +21,7 @@ export async function createCustomerCheckout(kind,{agreementId}={}){
       returnUrl:window.location.origin+window.location.pathname+'?square_checkout=return'
     }
   });
-  if(error||!data?.checkoutUrl||!data?.checkoutId)throw new Error(data?.message||error?.message||'Square checkout could not be created.');
+  if(error||!data?.checkoutUrl||!data?.checkoutId){let message=data?.message||error?.message||'Square checkout could not be created.';if(error?.context?.json){try{const body=await error.context.json();message=body?.message||message}catch{}}throw new Error(message)}
   const url=new URL(data.checkoutUrl);
   if(url.protocol!=='https:'||!/(^|\.)squareup\.com$/.test(url.hostname)&&!/(^|\.)square\.link$/.test(url.hostname))throw new Error('Square returned an unexpected checkout address.');
   return {checkoutUrl:url.href,checkoutId:data.checkoutId};
