@@ -144,6 +144,7 @@ document.addEventListener('steadyhands:purchase-options',async()=>{
  await refreshPaymentStatus();
  renderPurchase();
 });
+window.addEventListener('focus',async()=>{if(wrapper.hidden||!purchaseUser||!signedAgreement||completedCount()===3)return;if(!checkoutSessions.development&&!checkoutSessions.hosting)return;await refreshPaymentStatus();renderPurchase()});
 $('#journey-dialog-close').onclick=close;
 wrapper.addEventListener('click',e=>{if(e.target===wrapper)close()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!wrapper.hidden)close()});
