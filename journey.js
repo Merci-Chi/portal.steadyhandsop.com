@@ -46,7 +46,7 @@ async function savePurchaseDraft(){
  return true;
 }
 function purchaseMarkup(){
- const list='<div class="journey-purchase-steps">'+purchaseSteps.map((x,i)=>'<div class="journey-purchase-stage '+(purchaseStep===i?'active':'')+'"><span class="stage-number">'+(i+1)+'</span><span>'+x.title+'</span></div>').join('')+'</div><div class="journey-progress"><div style="width:'+((purchaseStep+1)/3*100)+'%"></div></div>';
+ const list='<div class="journey-purchase-steps">'+purchaseSteps.map((x,i)=>'<button type="button" data-stage="'+i+'" class="journey-purchase-stage '+(purchaseStep===i?'active':'')+'"><span class="stage-number">'+(i+1)+'</span><span>'+x.title+'</span></button>').join('')+'</div><div class="journey-progress"><div style="width:'+((purchaseStep+1)/3*100)+'%"></div></div>';
  let body='';
  if(purchaseStep===0){
   body='<h3>1. Sign Agreement</h3><p>Review the complete terms before placing your signature. This must be done before payment.</p>'+
@@ -66,7 +66,7 @@ function purchaseMarkup(){
   '<label><input type="radio" name="journey-host" value="backend" '+(purchasePlan==='backend'?'checked':'')+'><span><strong>Backend Hosting</strong><small>$30/month</small></span></label></div>'+
   '<button id="purchase-save-plan" class="primary" type="button">Save Hosting Selection</button><p class="journey-muted">Saving a selection does not start billing.</p>';
  }
- return '<div class="journey-dialog-body">'+list+'<div class="journey-purchase-stage-content">'+body+'</div><p id="purchase-notice" role="status" class="journey-muted">Your progress is tied to your portal account.</p></div>';
+ return '<div class="journey-dialog-body">'+list+'<div class="journey-purchase-stage-content">'+body+'</div><p id="purchase-notice" role="status" class="journey-muted">Your hosting choice is saved to your portal account. Signing and payment are not yet connected.</p></div>';
 }
 function setupSignatureCanvas(){
  const canvas=$('#journey-sign');if(!canvas)return;
@@ -81,6 +81,7 @@ function setupSignatureCanvas(){
 function renderPurchase(){
  open(purchaseMarkup(),'Complete Your Purchase');
  setupSignatureCanvas();
+ wrapper.querySelectorAll('[data-stage]').forEach(btn=>btn.onclick=()=>{purchaseStep=Number(btn.dataset.stage);renderPurchase()});
  const options=wrapper.querySelectorAll('input[name="journey-host"]');
  options.forEach(x=>x.onchange=async()=>{purchasePlan=x.value;await savePurchaseDraft()});
  const save=$('#purchase-save-plan');
