@@ -31,8 +31,8 @@ function validate(){
  return '';
 }
 async function advance(){if(working)return;const error=validate();if(error){$('#wizard-error').textContent=error;return}capture();if(step<2){step++;data.contact='';render();return}working=true;$('.wizard-next').disabled=true;$('#wizard-error').textContent='Submitting…';const {data:sessionData}=await supabase.auth.getUser();const user=sessionData?.user;if(!user){working=false;$('.wizard-next').disabled=false;$('#wizard-error').textContent='Please sign in to submit.';return}
- const details=data.details+'\n\nPreferred delivery: '+(mode==='text'?'Text message':'Email')+'\nContact: '+data.contact;
- const {error:err}=await supabase.from('portal_service_requests').insert({user_id:user.id,company_name:user.user_metadata?.portal_company_name||'',request_type:data.type,title:data.title,details});
+ const details=data.details;
+ const {error:err}=await supabase.from('portal_service_requests').insert({user_id:user.id,company_name:user.user_metadata?.portal_company_name||'',request_type:data.type,title:data.title,details,preferred_contact_method:mode,preferred_contact_value:data.contact});
  working=false;if(err){$('.wizard-next').disabled=false;$('#wizard-error').textContent=err.message;return}
  success=true;$('#wizard-content').innerHTML='<div class="wizard-success"><div class="wizard-check">✓</div><h3>Request submitted!</h3><p>We received your request. You can track its progress in your request history.</p></div>';$('#wizard-step-label').textContent='Complete';$('#wizard-progress-percent').textContent='100%';$('#wizard-progress-fill').style.width='100%';$('#wizard-actions').hidden=false;$('.wizard-back').hidden=true;$('.wizard-next').disabled=false;$('.wizard-next').textContent='Done';$('#wizard-error').textContent='';
 }
