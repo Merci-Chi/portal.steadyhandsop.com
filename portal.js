@@ -81,10 +81,15 @@ document.addEventListener('touchend',e=>{if(!gesture||innerWidth>760)return;cons
 $('#logout').onclick=async()=>{await supabase.auth.signOut();location.replace('login.html')};
 async function redeemPreview(value){
  const code=normalizePreviewCode(value);if(!code)return false;
- const res=await supabase.rpc('claim_portal_preview',{p_code:code});
- if(!res.error){sessionStorage.removeItem('steadyhands.preview_code');await loadRecords();render();alert('Your preview is now connected to your account.');return true}
  const found=publicPreviewCodes[code];
- if(!found||!/not found|invalid|does not exist/i.test(res.error.message||'')){alert('Could not link preview: '+res.error.message);return false}
+ // Site keys issued by the public website exist before a portal claim record.
+ // Handle them directly, without calling a database function that cannot find them.
+ if(!found){
+  const res=await supabase.rpc('claim_portal_preview',{p_code:code});
+  if(res.error){alert('Could not link preview: '+res.error.message);return false}
+  sessionStorage.removeItem('steadyhands.preview_code');await loadRecords();render();
+  alert('Your preview is now connected to your account.');return true;
+ }
  const title='Preview Link Requested — '+code;
  const existing=await supabase.from('portal_service_requests').select('id').eq('user_id',user.id).eq('title',title).is('deleted_at',null).limit(1);
  if(existing.error){alert('Could not check link request: '+existing.error.message);return false}
