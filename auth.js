@@ -1,7 +1,8 @@
 import {supabase} from './supabase-client.js';
 import {PORTAL_URL} from './config.js';
 const $=s=>document.querySelector(s), msg=(m,error=false)=>{const el=$('#message');el.textContent=m;el.className=error?'error':'success'};
-let mode='signin';const redirect=PORTAL_URL+'/index.html';
+let mode='signin';const previewCode=new URLSearchParams(location.search).get('preview_code')||sessionStorage.getItem('steadyhands.preview_code');
+const redirect=PORTAL_URL+'/index.html'+(previewCode?'?preview_code='+encodeURIComponent(previewCode):'');
 const inviteCode=new URLSearchParams(location.search).get('preview_code');if(inviteCode&&/^[A-Za-z0-9_-]{16,160}$/.test(inviteCode))sessionStorage.setItem('steadyhands.preview_code',inviteCode);
 const email=$('#email');const remembered=localStorage.getItem('steadyhands.savedEmail');if(remembered){email.value=remembered;$('#remember').checked=true}
 function saveEmail(){if($('#remember').checked)localStorage.setItem('steadyhands.savedEmail',email.value.trim());else localStorage.removeItem('steadyhands.savedEmail')}
