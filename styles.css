@@ -101,3 +101,11 @@ body.wizard-open{overflow:hidden}#request-wizard-overlay{position:fixed;inset:0;
 @media(max-width:480px){.journey-purchase-stage{flex-direction:column;gap:5px;padding:10px 4px;font-size:10px}}
 
 .journey-terms-link{border:0;background:transparent;color:#145fa9;font-weight:800;text-decoration:underline;cursor:pointer;padding:0}.journey-terms-overlay{position:fixed;inset:0;z-index:1600;background:#081d3999;display:grid;place-items:center;padding:16px}.journey-terms-box{width:min(100%,490px);max-height:85dvh;overflow-y:auto;background:white;border-radius:17px;padding:26px;color:#18365a;box-shadow:0 20px 60px #001a3855}.journey-terms-box h3{margin:0 0 15px}.journey-terms-box p{font-size:13px;line-height:1.65}.journey-terms-box .primary{margin-top:12px;width:100%;padding:12px}
+
+/* Full published agreement embedded in the signature popup */
+.journey-terms-embedded{width:min(960px,calc(100vw - 28px));height:min(88dvh,900px);max-height:88dvh;display:flex;flex-direction:column;gap:12px;padding:20px}
+.journey-terms-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.journey-terms-heading h3{margin:0;font-size:18px;color:#173459}
+.journey-terms-heading a{font-size:12px;color:#1566b2;font-weight:800;text-decoration:none}
+.journey-terms-embedded iframe{flex:1;min-height:220px;width:100%;border:1px solid #dce8f5;border-radius:12px;background:#f2f6fb}
+.journey-terms-embedded .primary{flex-shrink:0;margin:0;padding:12px}
