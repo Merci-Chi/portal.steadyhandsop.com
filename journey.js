@@ -37,6 +37,9 @@ let purchasePlan=null;
 let purchaseSaving=false;
 let signatureDrawn=false;
 let purchaseUser=null;
+let signedAgreement=null;
+const AGREEMENT_VERSION='2026-10-09';
+async function loadSignedAgreement(userId){const {data,error}=await supabase.from('portal_agreement_signatures').select('id,agreement_version,signed_at').eq('user_id',userId).eq('agreement_version',AGREEMENT_VERSION).eq('acknowledged',true).order('signed_at',{ascending:false}).limit(1).maybeSingle();if(error)throw error;return data;}
 function purchaseKey(){return 'steadyhands_purchase_draft_'+(purchaseUser?.id||'unknown')}
 function purchaseDraft(){return {step:purchaseStep,plan:purchasePlan,updated_at:new Date().toISOString()}}
 async function savePurchaseDraft(){
@@ -50,7 +53,9 @@ async function savePurchaseDraft(){
 function purchaseMarkup(){
  const list='<div class="journey-purchase-steps">'+purchaseSteps.map((x,i)=>'<button type="button" data-stage="'+i+'" class="journey-purchase-stage '+(purchaseStep===i?'active':'')+'"><span class="stage-number">'+(i+1)+'</span><span>'+x.title+'</span></button>').join('')+'</div><div class="journey-progress"><div style="width:'+((purchaseStep+1)/3*100)+'%"></div></div>';
  let body='';
- if(purchaseStep===0){
+ if(purchaseStep===0&&signedAgreement){
+  body='<div class="journey-signed"><span class="journey-signed-check">✓</span><div><h3>Agreement Signed</h3><p>You signed the October 9, 2026 agreement'+(signedAgreement.signed_at?' on '+new Date(signedAgreement.signed_at).toLocaleDateString():'')+'. You do not need to sign again.</p></div></div><button type="button" id="journey-view-terms" class="secondary">View Signed Terms</button><button type="button" id="journey-signed-continue" class="primary">Continue to Website Design →</button>';
+ } else if(purchaseStep===0){
   body='<h3>1. Sign Agreement</h3><p>Review the complete terms before placing your signature. This must be done before payment.</p>'+
   '<div class="journey-info"><strong>Current agreement</strong><p>Read the <button type="button" class="journey-terms-link" id="journey-view-terms">Terms &amp; Conditions</button> before signing. Effective October 9, 2026. Open and review the full terms before signing.</p></div>'+
   '<label class="journey-sign-label">Signature</label><canvas id="journey-sign" width="760" height="220" aria-label="Draw a signature"></canvas>'+
@@ -83,9 +88,10 @@ function setupSignatureCanvas(){signatureDrawn=false;
 function renderPurchase(){
  open(purchaseMarkup(),'Complete Your Purchase');
  setupSignatureCanvas();
- const sign=$('#journey-sign-submit');if(sign)sign.onclick=async()=>{const agreed=$('#journey-agree')?.checked;if(!agreed){$('#purchase-notice').textContent='Please read and check the terms acknowledgment first.';return}if(!signatureDrawn){$('#purchase-notice').textContent='Please draw your signature first.';return}sign.disabled=true;$('#purchase-notice').textContent='Saving signature securely…';const {data:{user},error:authError}=await supabase.auth.getUser();if(authError||!user){$('#purchase-notice').textContent='Please sign in again.';sign.disabled=false;return}const png=$('#journey-sign').toDataURL('image/png');const {error}=await supabase.from('portal_agreement_signatures').insert({user_id:user.id,agreement_version:'2026-10-09',agreement_title:'Steady Hands LLC — Website Services Terms & Conditions',signature_png:png,acknowledged:true});if(error){$('#purchase-notice').textContent='Signature not saved: '+error.message;sign.disabled=false;return}purchaseStep=1;renderPurchase();$('#purchase-notice').textContent='Agreement signature saved to Supabase. Website design checkout is the next step.'};
+ const sign=$('#journey-sign-submit');if(sign)sign.onclick=async()=>{const agreed=$('#journey-agree')?.checked;if(!agreed){$('#purchase-notice').textContent='Please read and check the terms acknowledgment first.';return}if(!signatureDrawn){$('#purchase-notice').textContent='Please draw your signature first.';return}sign.disabled=true;$('#purchase-notice').textContent='Saving signature securely…';const {data:{user},error:authError}=await supabase.auth.getUser();if(authError||!user){$('#purchase-notice').textContent='Please sign in again.';sign.disabled=false;return}const png=$('#journey-sign').toDataURL('image/png');const {error}=await supabase.from('portal_agreement_signatures').insert({user_id:user.id,agreement_version:AGREEMENT_VERSION,agreement_title:'Steady Hands LLC — Website Services Terms & Conditions',signature_png:png,acknowledged:true});if(error){if(error.code==='23505'){signedAgreement=await loadSignedAgreement(user.id);if(signedAgreement){purchaseStep=1;renderPurchase();return}}$('#purchase-notice').textContent='Signature not saved: '+error.message;sign.disabled=false;return}signedAgreement=await loadSignedAgreement(user.id);if(!signedAgreement){$('#purchase-notice').textContent='Signature could not be confirmed. Please try again.';sign.disabled=false;return}purchaseStep=1;renderPurchase();$('#purchase-notice').textContent='Agreement signature saved to Supabase. Website design checkout is the next step.'};
+ const continueSigned=$('#journey-signed-continue');if(continueSigned)continueSigned.onclick=()=>{purchaseStep=1;renderPurchase()};
  const terms=$('#journey-view-terms');if(terms)terms.onclick=()=>{const modal=document.createElement('div');modal.className='journey-terms-overlay';modal.innerHTML='<section class="journey-terms-box journey-terms-embedded" role="dialog" aria-modal="true" aria-label="Terms and Conditions"><div class="journey-terms-heading"><h3>Website Services — Terms &amp; Conditions</h3><a href="terms-and-conditions.html" target="_blank" rel="noopener noreferrer">Open full page ↗</a></div><iframe title="Steady Hands Terms and Conditions" src="terms-and-conditions.html"></iframe><button type="button" class="primary" id="close-terms">Close</button></section>';document.body.appendChild(modal);modal.querySelector('#close-terms').onclick=()=>modal.remove();modal.onclick=e=>{if(e.target===modal)modal.remove()}};
- wrapper.querySelectorAll('[data-stage]').forEach(btn=>btn.onclick=()=>{purchaseStep=Number(btn.dataset.stage);renderPurchase()});
+ wrapper.querySelectorAll('[data-stage]').forEach(btn=>{btn.onclick=()=>{if(Number(btn.dataset.stage)>0&&!signedAgreement){$('#purchase-notice').textContent='Please sign your agreement first.';return}purchaseStep=Number(btn.dataset.stage);renderPurchase()}});
  const options=wrapper.querySelectorAll('input[name="journey-host"]');
  options.forEach(x=>x.onchange=async()=>{purchasePlan=x.value;await savePurchaseDraft()});
  const design=$('#pay-website-design');if(design)design.onclick=()=>{const notice=$('#purchase-notice');notice.textContent='Secure Square checkout cannot open until the final agreement has been published, signed, and verified. The saved sample signature does not authorize payment.';notice.scrollIntoView({block:'nearest',behavior:'smooth'})};
@@ -99,7 +105,8 @@ document.addEventListener('steadyhands:purchase-options',async()=>{
  const draft=user.user_metadata?.portal_purchase_draft||{};
  purchasePlan=['standard','backend'].includes(draft.plan)?draft.plan:null;
  // Progress is not considered paid or signed based solely on user-editable metadata.
- purchaseStep=0;
+ try{signedAgreement=await loadSignedAgreement(user.id)}catch(e){open('<p class="journey-info">Unable to load your agreement status: '+String(e.message||e).replace(/[<>]/g,'')+'</p>','Agreement Status');return}
+ purchaseStep=signedAgreement?1:0;
  renderPurchase();
 });
 $('#journey-dialog-close').onclick=close;
