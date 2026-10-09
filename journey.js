@@ -61,12 +61,12 @@ function purchaseMarkup(){
   body='<h3>2. Website Design</h3><p>Your website development fee is <strong>$100 one time</strong>.</p>'+
   '<div class="journey-purchase-total"><strong>Website design</strong><span>$100 one time</span></div>'+
   '<div class="journey-info">This will use the same unique, customer-specific Square payment links as View Your Site. Checkout activates after the final signed agreement is verified. No payment has been made.</div>'+
-  '<button type="button" class="primary" id="pay-website-design" disabled title="Final agreement required">Pay $100 with Square</button>';
+  '<button type="button" class="primary" id="pay-website-design">Continue to Square Checkout</button>';
  } else {
   body='<h3>3. Select Hosting</h3><p>Choose the plan that works best for your site. Billing starts only when a subscription is confirmed.</p>'+
   '<div class="journey-host-options"><label><input type="radio" name="journey-host" value="standard" '+(purchasePlan==='standard'?'checked':'')+'><span><strong>Standard Hosting</strong><small>$20/month</small></span></label>'+
   '<label><input type="radio" name="journey-host" value="backend" '+(purchasePlan==='backend'?'checked':'')+'><span><strong>Backend Hosting</strong><small>$30/month</small></span></label></div>'+
-  '<button id="purchase-save-plan" class="primary" type="button">Save Hosting Selection</button><p class="journey-muted">Saving a selection does not start billing.</p>';
+  '<button id="purchase-save-plan" class="primary" type="button">Save Hosting Selection</button><button id="purchase-hosting-checkout" class="secondary" type="button">Continue to Hosting Checkout</button><p class="journey-muted">Saving a selection does not start billing.</p>';
  }
  return '<div class="journey-dialog-body">'+list+'<div class="journey-purchase-stage-content">'+body+'</div><p id="purchase-notice" role="status" class="journey-muted">Your hosting choice is saved to your portal account. Signing and payment are not yet connected.</p></div>';
 }
@@ -88,6 +88,8 @@ function renderPurchase(){
  wrapper.querySelectorAll('[data-stage]').forEach(btn=>btn.onclick=()=>{purchaseStep=Number(btn.dataset.stage);renderPurchase()});
  const options=wrapper.querySelectorAll('input[name="journey-host"]');
  options.forEach(x=>x.onchange=async()=>{purchasePlan=x.value;await savePurchaseDraft()});
+ const design=$('#pay-website-design');if(design)design.onclick=()=>{const notice=$('#purchase-notice');notice.textContent='Secure Square checkout cannot open until the final agreement has been published, signed, and verified. The saved sample signature does not authorize payment.';notice.scrollIntoView({block:'nearest',behavior:'smooth'})};
+ const hosting=$('#purchase-hosting-checkout');if(hosting)hosting.onclick=()=>{const notice=$('#purchase-notice');notice.textContent=purchasePlan?'Your '+(purchasePlan==='backend'?'Backend':'Standard')+' choice is saved. Square checkout will open once your final signed agreement and website design payment are verified.':'Select a hosting plan first.';notice.scrollIntoView({block:'nearest',behavior:'smooth'})};
  const save=$('#purchase-save-plan');
  if(save)save.onclick=async()=>{if(!purchasePlan){$('#purchase-notice').textContent='Please select a hosting plan.';return}save.disabled=true;const ok=await savePurchaseDraft();if(ok)$('#purchase-notice').textContent='Hosting preference saved to your account. No subscription has been started.';save.disabled=false};
 }
