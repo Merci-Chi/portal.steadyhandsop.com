@@ -34,6 +34,7 @@ const purchaseSteps=[
 let purchaseStep=0;
 let purchasePlan=null;
 let purchaseSaving=false;
+let signatureDrawn=false;
 let purchaseUser=null;
 function purchaseKey(){return 'steadyhands_purchase_draft_'+(purchaseUser?.id||'unknown')}
 function purchaseDraft(){return {step:purchaseStep,plan:purchasePlan,updated_at:new Date().toISOString()}}
@@ -54,7 +55,7 @@ function purchaseMarkup(){
   '<label class="journey-sign-label">Signature</label><canvas id="journey-sign" width="760" height="220" aria-label="Draw a signature"></canvas>'+
   '<button type="button" class="secondary" id="journey-clear-sign">Clear Signature</button>'+
   '<label class="journey-agree"><input type="checkbox" id="journey-agree"> I have read and agree to the website service agreement.</label>'+
-  '<button class="primary" disabled>Sign & Continue</button>';
+  '<button class="primary" id="journey-sign-submit" type="button">Save Signature & Continue</button>';
  } else if(purchaseStep===1){
   body='<h3>2. Website Design</h3><p>Your website development fee is <strong>$100 one time</strong>.</p>'+
   '<div class="journey-purchase-total"><strong>Website design</strong><span>$100 one time</span></div>'+
@@ -68,19 +69,20 @@ function purchaseMarkup(){
  }
  return '<div class="journey-dialog-body">'+list+'<div class="journey-purchase-stage-content">'+body+'</div><p id="purchase-notice" role="status" class="journey-muted">Your hosting choice is saved to your portal account. Signing and payment are not yet connected.</p></div>';
 }
-function setupSignatureCanvas(){
+function setupSignatureCanvas(){signatureDrawn=false;
  const canvas=$('#journey-sign');if(!canvas)return;
  const ctx=canvas.getContext('2d');let drawing=false;
  function coords(e){const b=canvas.getBoundingClientRect();return {x:(e.clientX-b.left)*canvas.width/b.width,y:(e.clientY-b.top)*canvas.height/b.height}}
- canvas.addEventListener('pointerdown',e=>{drawing=true;canvas.setPointerCapture(e.pointerId);const p=coords(e);ctx.beginPath();ctx.moveTo(p.x,p.y)});
+ canvas.addEventListener('pointerdown',e=>{drawing=true;signatureDrawn=true;canvas.setPointerCapture(e.pointerId);const p=coords(e);ctx.beginPath();ctx.moveTo(p.x,p.y)});
  canvas.addEventListener('pointermove',e=>{if(!drawing)return;const p=coords(e);ctx.lineWidth=3;ctx.lineCap='round';ctx.strokeStyle='#173459';ctx.lineTo(p.x,p.y);ctx.stroke()});
  canvas.addEventListener('pointerup',()=>drawing=false);
  canvas.addEventListener('pointercancel',()=>drawing=false);
- $('#journey-clear-sign').onclick=()=>ctx.clearRect(0,0,canvas.width,canvas.height);
+ $('#journey-clear-sign').onclick=()=>{ctx.clearRect(0,0,canvas.width,canvas.height);signatureDrawn=false};
 }
 function renderPurchase(){
  open(purchaseMarkup(),'Complete Your Purchase');
  setupSignatureCanvas();
+ const sign=$('#journey-sign-submit');if(sign)sign.onclick=async()=>{const agreed=$('#journey-agree')?.checked;if(!agreed){$('#purchase-notice').textContent='Please read and check the terms acknowledgment first.';return}if(!signatureDrawn){$('#purchase-notice').textContent='Please draw your signature first.';return}sign.disabled=true;$('#purchase-notice').textContent='Saving signature securely…';const {data:{user},error:authError}=await supabase.auth.getUser();if(authError||!user){$('#purchase-notice').textContent='Please sign in again.';sign.disabled=false;return}const png=$('#journey-sign').toDataURL('image/png');const {error}=await supabase.from('portal_agreement_signatures').insert({user_id:user.id,agreement_version:'sample-v1',agreement_title:'Steady Hands Website Service Agreement — Sample',signature_png:png,acknowledged:true});if(error){$('#purchase-notice').textContent='Signature not saved: '+error.message;sign.disabled=false;return}purchaseStep=1;renderPurchase();$('#purchase-notice').textContent='Sample agreement acknowledgment and signature saved to Supabase. Final contract and Square payment are not yet active.'};
  const terms=$('#journey-view-terms');if(terms)terms.onclick=()=>{const modal=document.createElement('div');modal.className='journey-terms-overlay';modal.innerHTML='<section class="journey-terms-box" role="dialog" aria-modal="true" aria-label="Terms and Conditions"><h3>Website Service Agreement — Sample</h3><p><b>Development.</b> Website design costs $100 one time.</p><p><b>Hosting.</b> Standard $20/month or Backend $30/month; recurring charges are separate.</p><p><b>Revisions.</b> Reasonable revisions may be requested. Extra work may cost more with approval.</p><p><b>Materials.</b> The client supplies accurate information and authorized content.</p><p><b>Cancellation.</b> Hosting cancellation is subject to the final subscription terms.</p><p><b>Agreement.</b> A binding agreement and final payment authorization must be completed separately.</p><button type="button" class="primary" id="close-terms">Close</button></section>';document.body.appendChild(modal);modal.querySelector('#close-terms').onclick=()=>modal.remove();modal.onclick=e=>{if(e.target===modal)modal.remove()}};
  wrapper.querySelectorAll('[data-stage]').forEach(btn=>btn.onclick=()=>{purchaseStep=Number(btn.dataset.stage);renderPurchase()});
  const options=wrapper.querySelectorAll('input[name="journey-host"]');
