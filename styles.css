@@ -224,3 +224,20 @@ body.wizard-open{overflow:hidden}#request-wizard-overlay{position:fixed;inset:0;
 .request-empty-icon{width:58px;height:58px;display:grid;place-items:center;background:#edf5ff;border-radius:18px;color:#3976b8}
 .request-empty-icon svg{width:27px;height:27px}
 @media(max-width:650px){.request-page-modern{gap:15px}.request-new-modern{padding:17px;gap:12px;border-radius:16px}.request-new-icon{width:46px;height:46px}.request-new-copy strong{font-size:16px}.request-new-copy small{font-size:11px}.request-history-modern{padding:22px 16px!important}.request-item-modern{padding:15px;gap:11px}.request-type-icon{width:39px;height:39px}.request-item-bottom{align-items:flex-start}.request-item-modern .portal-request-actions{width:100%;justify-content:flex-end}.request-action-edit,.request-action-delete{padding:9px 11px}}
+
+
+/* Promo code controls on purchase steps 2 and 3 */
+.purchase-code-box{margin:16px 0 20px;border:1px solid #dbe8f5;border-radius:13px;background:#f7fbff;overflow:hidden}
+.purchase-code-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;padding:14px 16px;border:0;background:transparent;color:#195b9d;font-size:13px;font-weight:800;cursor:pointer}
+.purchase-code-toggle:hover{background:#eef6ff}
+.purchase-code-fields{padding:0 16px 16px}
+.purchase-code-fields[hidden]{display:none}
+.purchase-code-fields label{display:block;margin-bottom:8px;color:#486885;font-size:12px;font-weight:700}
+.purchase-code-input-row{display:flex;gap:9px}
+.purchase-code-input-row input{flex:1;min-width:0;border:1px solid #c9dcef;border-radius:10px;padding:12px 13px;font-size:14px;background:#fff;outline:none}
+.purchase-code-input-row input:focus{border-color:#2978c1;box-shadow:0 0 0 3px #b9daf65a}
+.purchase-code-input-row button{min-width:81px;border-radius:10px}
+.purchase-code-feedback{display:block;min-height:16px;margin-top:9px;color:#567896;font-size:12px}
+.code-free-label{display:inline-block;margin-left:8px;padding:4px 9px;border-radius:8px;background:#ddf5e9;color:#14784a;font-size:12px}
+.journey-purchase-total s,.journey-host-options s{color:#8da0b2;margin-right:5px}
+@media(max-width:480px){.purchase-code-input-row{flex-wrap:wrap}.purchase-code-input-row button{width:100%}}
