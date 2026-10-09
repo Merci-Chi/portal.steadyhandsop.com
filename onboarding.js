@@ -11,14 +11,14 @@ else {
   if(existing?.full_name?.trim()&&company){location.replace('index.html');}
   else {
    $('name').value=existing?.full_name||metadata.full_name||metadata.name||'';
-   $('company').value=company;
+   $('company').value=company; $('referral').value=String(metadata.portal_referral_code||'');
    $('setup').addEventListener('submit',async e=>{
     e.preventDefault();
     const name=$('name').value.trim(),companyName=$('company').value.trim();
     if(!name||!companyName){$('message').textContent='Both fields are required.';return;}
     $('save').disabled=true;$('message').textContent='';
     // Company name is user-submitted onboarding metadata, NOT verified company membership.
-    const {error:metadataError}=await supabase.auth.updateUser({data:{portal_company_name:companyName}});
+    const {error:metadataError}=await supabase.auth.updateUser({data:{portal_company_name:companyName,portal_referral_code:$('referral').value.trim().toUpperCase()}});
     if(metadataError){$('message').textContent=metadataError.message;$('save').disabled=false;return;}
     const {error:profileError}=await supabase.from('portal_profiles').upsert({user_id:user.id,full_name:name,updated_at:new Date().toISOString()},{onConflict:'user_id'});
     if(profileError){$('message').textContent=profileError.message;$('save').disabled=false;return;}
