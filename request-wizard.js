@@ -15,8 +15,18 @@ function phoneFormat(raw){
 }
 function show(){step=0;success=false;working=false;data.type=sessionStorage.getItem('portal_request_type')||'other';if(!types[data.type])data.type='other';previewFlow=data.type==='preview';sessionStorage.removeItem('portal_request_type');data.title='';data.details='';data.contact='';data.business='';data.services='';data.style='';data.features='';mode='email';shell.hidden=false;document.body.classList.add('wizard-open');render()}
 function openPreview(){sessionStorage.setItem('portal_request_type','preview');show()}
-function close(){if(working)return;shell.hidden=true;document.body.classList.remove('wizard-open');if(success)location.reload()}
-function capture(){if(previewFlow){if(step===0){data.business=$('#wizard-business').value.trim();data.services=$('#wizard-services').value.trim()}if(step===1){data.style=$('#wizard-style').value.trim();data.features=$('#wizard-features').value.trim()}if(step===2)data.details=$('#wizard-description').value.trim();if(step===3)}else{if(step===0)data.title=$('#wizard-subject').value.trim();if(step===1)data.details=$('#wizard-description').value.trim();if(step===2)}{mode=$('input[name=wizard-method]:checked').value;data.contact=$('#wizard-contact').value.trim()}}
+function close(){if(working)return;shell.hidden=true;document.body.classList.remove('wizard-open');if(success){location.hash='requests';location.reload()}}
+function capture(){
+ if(previewFlow){
+  if(step===0){data.business=$('#wizard-business').value.trim();data.services=$('#wizard-services').value.trim()}
+  if(step===1){data.style=$('#wizard-style').value.trim();data.features=$('#wizard-features').value.trim()}
+  if(step===2)data.details=$('#wizard-description').value.trim();
+ }else{
+  if(step===0){data.type=$('#wizard-type').value;data.title=$('#wizard-subject').value.trim()}
+  if(step===1)data.details=$('#wizard-description').value.trim();
+ }
+ if(step===(previewFlow?3:2)){mode=$('input[name=wizard-method]:checked').value;data.contact=$('#wizard-contact').value.trim()}
+}
 function render(){
  $('#wizard-error').textContent='';
  const count=previewFlow?4:3;const fill=(step+1)/count*100;$('#wizard-progress-fill').style.width=fill+'%';$('#wizard-step-label').textContent='Step '+(step+1)+' of '+count;$('#wizard-progress-percent').textContent=Math.round(fill)+'%';
@@ -33,7 +43,7 @@ function validate(){
  return '';
 }
 async function advance(){if(working)return;const error=validate();if(error){$('#wizard-error').textContent=error;return}capture();if(step<(previewFlow?3:2)){step++;data.contact='';render();return}working=true;$('.wizard-next').disabled=true;$('#wizard-error').textContent='Submitting…';const {data:sessionData}=await supabase.auth.getUser();const user=sessionData?.user;if(!user){working=false;$('.wizard-next').disabled=false;$('#wizard-error').textContent='Please sign in to submit.';return}
- const details=previewFlow?['Business: '+data.business,'Business type and services: '+data.services,'Style and colors: '+(data.style||'Not specified'),'Requested features: '+(data.features||'Not specified'),'Additional details: '+(data.details||'None')].join('\\n'):data.details;const title=previewFlow?'Free Website Preview — '+data.business:data.title;
+ const details=previewFlow?['Business: '+data.business,'Business type and services: '+data.services,'Style and colors: '+(data.style||'Not specified'),'Requested features: '+(data.features||'Not specified'),'Additional details: '+(data.details||'None')].join('\n'):data.details;const title=previewFlow?'Free Website Preview — '+data.business:data.title;
  const {error:err}=await supabase.from('portal_service_requests').insert({user_id:user.id,company_name:user.user_metadata?.portal_company_name||'',request_type:data.type,title,details,preferred_contact_method:mode,preferred_contact_value:data.contact});
  working=false;if(err){$('.wizard-next').disabled=false;$('#wizard-error').textContent=err.message;return}
  success=true;$('#wizard-title').textContent='Request submitted';$('#wizard-content').innerHTML='<div class="wizard-success"><div class="wizard-check">✓</div><h3>Request submitted!</h3><p>You can view your submission on <strong>Requests</strong>.</p></div>';$('#wizard-step-label').textContent='Complete';$('#wizard-progress-percent').textContent='100%';$('#wizard-progress-fill').style.width='100%';$('#wizard-actions').hidden=false;$('.wizard-back').hidden=true;$('.wizard-next').disabled=false;$('.wizard-next').textContent='View Requests';$('#wizard-error').textContent='';
