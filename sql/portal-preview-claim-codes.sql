@@ -49,9 +49,19 @@ begin
 end $$;
 revoke all on function public.claim_portal_preview(text) from public;
 grant execute on function public.claim_portal_preview(text) to authenticated;
--- Generate one invite by running the following separately in SQL Editor, replacing the placeholders:
--- with generated as (select encode(gen_random_bytes(24),'hex') as code)
--- insert into public.portal_preview_invites(code_hash,site_key,site_title,preview_url)
--- select encode(digest(code,'sha256'),'hex'),'SHS-EXAMPLE','Business Site','https://steadyhandsop.com/Sites/example' from generated
--- returning id;
--- Save the raw generated code yourself at creation time; hashes cannot be reversed.
+-- Only Steady Hands admins may generate codes.
+create or replace function public.create_portal_preview_invite(p_site_key text,p_site_title text,p_preview_url text)
+returns text language plpgsql security definer set search_path='' as $$
+declare v_code text;
+begin
+ if not exists(select 1 from public.team_permissions p where p.user_id=auth.uid() and p.active=true and upper(p.role::text)='ADMIN')
+ then raise exception 'Admin access required'; end if;
+ if length(trim(coalesce(p_site_key,'')))<3 or p_preview_url not like 'https://%'
+ then raise exception 'A valid site key and HTTPS preview URL are required'; end if;
+ v_code:=encode(extensions.gen_random_bytes(24),'hex');
+ insert into public.portal_preview_invites(code_hash,site_key,site_title,preview_url,expires_at)
+ values(encode(extensions.digest(v_code,'sha256'),'hex'),trim(p_site_key),coalesce(nullif(trim(p_site_title),''),'Your Website Preview'),trim(p_preview_url),now()+interval '60 days');
+ return 'https://portal.steadyhandsop.com/login.html?preview_code='||v_code;
+end $$;
+revoke all on function public.create_portal_preview_invite(text,text,text) from public;
+grant execute on function public.create_portal_preview_invite(text,text,text) to authenticated;
