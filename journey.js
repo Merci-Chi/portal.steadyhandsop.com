@@ -1,4 +1,5 @@
 import {supabase} from './supabase-client.js';
+import {createCustomerCheckout,verifyCustomerCheckout} from './square-checkout.js';
 const wrapper=document.createElement('div');wrapper.id='journey-dialog-overlay';wrapper.hidden=true;
 wrapper.innerHTML='<div class="journey-dialog" role="dialog" aria-modal="true" aria-labelledby="journey-dialog-title"><div class="journey-dialog-head"><h2 id="journey-dialog-title">Complete Your Purchase</h2><button type="button" id="journey-dialog-close" aria-label="Close">×</button></div><div id="journey-dialog-content"></div></div>';
 document.body.appendChild(wrapper);
@@ -59,8 +60,8 @@ function purchaseMarkup(){
  } else if(purchaseStep===1){
   body='<h3>2. Website Design</h3><p>Your website development fee is <strong>$100 one time</strong>.</p>'+
   '<div class="journey-purchase-total"><strong>Website design</strong><span>$100 one time</span></div>'+
-  '<div class="journey-info">Square checkout will be enabled after a real agreement is signed and the payment link is verified. Payment has not been completed.</div>'+
-  '<button type="button" class="primary" disabled>Pay $100 with Square</button>';
+  '<div class="journey-info">This will use the same unique, customer-specific Square payment links as View Your Site. Checkout activates after the final signed agreement is verified. No payment has been made.</div>'+
+  '<button type="button" class="primary" id="pay-website-design" disabled title="Final agreement required">Pay $100 with Square</button>';
  } else {
   body='<h3>3. Select Hosting</h3><p>Choose the plan that works best for your site. Billing starts only when a subscription is confirmed.</p>'+
   '<div class="journey-host-options"><label><input type="radio" name="journey-host" value="standard" '+(purchasePlan==='standard'?'checked':'')+'><span><strong>Standard Hosting</strong><small>$20/month</small></span></label>'+
