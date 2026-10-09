@@ -122,3 +122,19 @@ body.wizard-open{overflow:hidden}#request-wizard-overlay{position:fixed;inset:0;
 @keyframes journey-fade-up{to{opacity:1;transform:translateY(0)}}
 @media(max-width:450px){.journey-finish-actions{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){.journey-finish-icon,.journey-finish-checks div,.journey-finish-actions button{animation:none;opacity:1;transform:none}}
+
+/* Website review workflow */
+.journey-preview-status{margin-top:16px;padding:17px 19px;border:1px solid #d9e7f7;background:#f0f6fd;border-radius:13px;color:#244d77}
+.journey-preview-status-head{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px;font-weight:800;flex-wrap:wrap}
+.journey-preview-status p{margin:9px 0 0;font-size:12px;line-height:1.65;color:#64809d}.journey-status-pill{border-radius:20px;background:#e4f0fe;color:#2367a5;padding:6px 11px;font-size:11px}
+.journey-wait-steps{display:grid;gap:12px;margin-top:14px;font-size:12px;color:#8a9aae}.journey-wait-steps .ready{color:#248553;font-weight:800}
+.journey-preview-card{border:1px solid #d8e5f1;border-radius:14px;overflow:hidden;margin-top:17px;background:#f4f8fc}
+.journey-browser-top{display:flex;align-items:center;gap:15px;background:#e8f0f9;padding:11px 14px;border-bottom:1px solid #d6e4f3}
+.journey-browser-dots{font-size:8px;color:#7399b8;letter-spacing:3px;white-space:nowrap}
+.journey-preview-address{font-size:11px;color:#65819a;text-overflow:ellipsis;white-space:nowrap;overflow:hidden}
+.journey-browser-inner{min-height:125px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:linear-gradient(145deg,#eff8ff,#e0effe);color:#173e69;text-align:center;padding:18px}
+.journey-browser-icon{font-size:26px;color:#387fc4}.journey-browser-inner strong{font-size:15px}.journey-browser-inner small{color:#6984a2}
+.journey-review-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:13px}
+.journey-review-actions .journey-action{text-decoration:none;text-align:center;min-width:0;border-radius:11px;padding:13px 8px;font-weight:800;font-size:12px;cursor:pointer}
+.journey-review-actions .journey-approve{background:#e3f5e9;border:1px solid #b7e5c9;color:#167948}
+@media(max-width:450px){.journey-review-actions{grid-template-columns:1fr}}
