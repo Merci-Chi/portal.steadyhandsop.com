@@ -7,7 +7,7 @@ const $=s=>wrapper.querySelector(s);
 function close(){wrapper.hidden=true;document.body.classList.remove('wizard-open')}
 function open(content,title){$('#journey-dialog-title').textContent=title;$('#journey-dialog-content').innerHTML=content;wrapper.hidden=false;document.body.classList.add('wizard-open')}
 document.addEventListener('steadyhands:approve-preview',async e=>{
- const {id,key}=e.detail||{};if(!id||!key)return;
+ const {id,key}=e.detail||{};if(!key)return;
  open('<div class="journey-dialog-body"><div class="journey-dialog-icon">✓</div><h3>Approve your site preview?</h3><p>Confirm you are happy with this preview. Your approval will be recorded under Requests and shared with the Steady Hands team.</p><div class="journey-info">Site key: <strong id="approved-site-key"></strong></div><p id="approval-message" role="status"></p><button type="button" class="primary" id="confirm-preview-approval">Approve This Preview</button></div>','Review Your Site');
  $('#approved-site-key').textContent=key;
  $('#confirm-preview-approval').onclick=async()=>{
@@ -15,13 +15,15 @@ document.addEventListener('steadyhands:approve-preview',async e=>{
   const {data:{user},error:userError}=await supabase.auth.getUser();
   if(userError||!user){$('#approval-message').textContent='Please sign in again.';button.disabled=false;return}
   // Verify that this site is accessible to this client through preview RLS.
-  let found=await supabase.from('portal_previews').select('id,site_key').eq('id',id).eq('site_key',key).maybeSingle();
-  if(!found.data){const claimed=await supabase.from('portal_preview_claims').select('id,site_key').eq('id',id).eq('site_key',key).eq('user_id',user.id).maybeSingle();if(claimed.data)found=claimed;}
-  if(!found.data){$('#approval-message').textContent='This preview is not assigned to your verified company.';button.disabled=false;return}
+  let found=id?await supabase.from('portal_previews').select('id,site_key').eq('id',id).eq('site_key',key).maybeSingle():{data:null};
+  if(!found.data&&id){const claimed=await supabase.from('portal_preview_claims').select('id,site_key').eq('id',id).eq('site_key',key).eq('user_id',user.id).maybeSingle();if(claimed.data)found=claimed;}
+  // Public preview codes can be selected in the client portal without an assigned portal_previews row.
+  const publicPreview=key==='SHS-GHWH26M9R7Q2';
+  if(!found.data&&!publicPreview){$('#approval-message').textContent='This preview is not available to your account.';button.disabled=false;return}
   const title='Preview Approved — '+key;
   const exists=await supabase.from('portal_service_requests').select('id').eq('user_id',user.id).eq('title',title).is('deleted_at',null).limit(1);
   if(exists.data?.length){$('#approval-message').textContent='This preview has already been approved.';button.disabled=false;return}
-  const {error}=await supabase.from('portal_service_requests').insert({user_id:user.id,company_name:user.user_metadata?.portal_company_name||'',request_type:'other',title,details:'Client approved their assigned website preview. Site key: '+key,preferred_contact_method:'email',preferred_contact_value:user.email});
+  const {error}=await supabase.from('portal_service_requests').insert({user_id:user.id,company_name:user.user_metadata?.portal_company_name||'',request_type:'other',title,details:'Client approved their website preview. Site key: '+key,preferred_contact_method:'email',preferred_contact_value:user.email});
   if(error){$('#approval-message').textContent=error.message;button.disabled=false;return}
   $('#journey-dialog-content').innerHTML='<div class="journey-dialog-body"><div class="journey-dialog-icon">✓</div><h3>Preview approved!</h3><p>Your approval has been sent to Steady Hands and saved under Requests.</p><button type="button" class="primary" id="approval-finish">Done</button></div>';
   $('#approval-finish').onclick=()=>{close();location.reload()};
