@@ -20,12 +20,13 @@ document.addEventListener('steadyhands:approve-preview',async e=>{
   // Public preview codes can be selected in the client portal without an assigned portal_previews row.
   const publicPreview=key==='SHS-GHWH26M9R7Q2';
   if(!found.data&&!publicPreview){$('#approval-message').textContent='This preview is not available to your account.';button.disabled=false;return}
-  const title='Preview Approved — '+key;
-  const exists=await supabase.from('portal_service_requests').select('id').eq('user_id',user.id).eq('title',title).is('deleted_at',null).limit(1);
-  if(exists.data?.length){$('#approval-message').textContent='This preview has already been approved.';button.disabled=false;return}
-  const {error}=await supabase.from('portal_service_requests').insert({user_id:user.id,company_name:user.user_metadata?.portal_company_name||'',request_type:'other',title,details:'Client approved their website preview. Site key: '+key,preferred_contact_method:'email',preferred_contact_value:user.email});
-  if(error){$('#approval-message').textContent=error.message;button.disabled=false;return}
-  $('#journey-dialog-content').innerHTML='<div class="journey-dialog-body"><div class="journey-dialog-icon">✓</div><h3>Preview approved!</h3><p>Your approval has been sent to Steady Hands and saved under Requests.</p><button type="button" class="primary" id="approval-finish">Done</button></div>';
+  const existing=(user.user_metadata?.portal_approved_previews||[]).map(v=>String(v).toUpperCase());
+  if(!existing.includes(key)){
+   const {error}=await supabase.auth.updateUser({data:{portal_approved_previews:[...existing,key]}});
+   if(error){$('#approval-message').textContent=error.message;button.disabled=false;return}
+  }
+  window.dispatchEvent(new CustomEvent('steadyhands:preview-approved',{detail:{key}}));
+  $('#journey-dialog-content').innerHTML='<div class="journey-dialog-body"><div class="journey-dialog-icon">✓</div><h3>Preview approved!</h3><p>Your website preview has been approved.</p><button type="button" class="primary" id="approval-finish">Done</button></div>';
   $('#approval-finish').onclick=()=>{close();location.reload()};
  };
 });
