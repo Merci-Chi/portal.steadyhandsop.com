@@ -25,14 +25,75 @@ document.addEventListener('steadyhands:approve-preview',async e=>{
   $('#approval-finish').onclick=()=>{close();location.reload()};
  };
 });
-document.addEventListener('steadyhands:purchase-options',()=>{
- open('<div class="journey-dialog-body"><p>Select a hosting plan, review the terms, and sign before proceeding to payment.</p><div class="journey-host-options"><label><input type="radio" name="journey-host" value="standard" checked><span><strong>Standard Hosting</strong><small>$20/month</small></span></label><label><input type="radio" name="journey-host" value="backend"><span><strong>Backend Hosting</strong><small>$30/month</small></span></label></div><div class="journey-purchase-total"><strong>Website development</strong><span>$100 one time</span></div><div class="journey-info"><strong>Agreement & terms</strong><p>The final agreement must be published and connected before legally collecting your signature or accepting payment through this flow.</p></div><label class="journey-sign-label">Signature preview</label><canvas id="journey-sign" width="760" height="220" aria-label="Draw your signature here"></canvas><button type="button" class="secondary" id="journey-clear-sign">Clear signature</button><p class="journey-muted">Signing and Square checkout are not active yet. No charges will be made here.</p><button type="button" class="primary journey-disabled" disabled>Sign Agreement & Continue to Checkout</button></div>','Complete Your Purchase');
- const canvas=$('#journey-sign'),ctx=canvas.getContext('2d');let drawing=false;
+
+const purchaseSteps=[
+ {title:'Sign Agreement',hint:'Review and sign your website service agreement.'},
+ {title:'Website Design',hint:'Complete the $100 one-time website development payment.'},
+ {title:'Select Hosting',hint:'Choose Standard or Backend hosting.'}
+];
+let purchaseStep=0;
+let purchasePlan=null;
+let purchaseSaving=false;
+let purchaseUser=null;
+function purchaseKey(){return 'steadyhands_purchase_draft_'+(purchaseUser?.id||'unknown')}
+function purchaseDraft(){return {step:purchaseStep,plan:purchasePlan,updated_at:new Date().toISOString()}}
+async function savePurchaseDraft(){
+ if(!purchaseUser)return false;
+ purchaseSaving=true;
+ const {error}=await supabase.auth.updateUser({data:{portal_purchase_draft:purchaseDraft()}});
+ purchaseSaving=false;
+ if(error){const el=$('#purchase-notice');if(el)el.textContent='Could not save progress: '+error.message;return false}
+ return true;
+}
+function purchaseMarkup(){
+ const list='<div class="journey-purchase-steps">'+purchaseSteps.map((x,i)=>'<div class="journey-purchase-stage '+(purchaseStep===i?'active':'')+'"><span class="stage-number">'+(i+1)+'</span><span>'+x.title+'</span></div>').join('')+'</div><div class="journey-progress"><div style="width:'+((purchaseStep+1)/3*100)+'%"></div></div>';
+ let body='';
+ if(purchaseStep===0){
+  body='<h3>1. Sign Agreement</h3><p>Review the complete terms before placing your signature. This must be done before payment.</p>'+
+  '<div class="journey-info"><strong>Agreement not yet published</strong><p>Your final Steady Hands website agreement must be connected here before a signature can be saved. We will not record a signature against missing terms.</p></div>'+
+  '<label class="journey-sign-label">Signature</label><canvas id="journey-sign" width="760" height="220" aria-label="Draw a signature"></canvas>'+
+  '<button type="button" class="secondary" id="journey-clear-sign">Clear Signature</button>'+
+  '<label class="journey-agree"><input type="checkbox" id="journey-agree" disabled> I have read and agree to the website service agreement.</label>'+
+  '<button class="primary" disabled>Sign & Continue</button>';
+ } else if(purchaseStep===1){
+  body='<h3>2. Website Design</h3><p>Your website development fee is <strong>$100 one time</strong>.</p>'+
+  '<div class="journey-purchase-total"><strong>Website design</strong><span>$100 one time</span></div>'+
+  '<div class="journey-info">Square checkout will be enabled after a real agreement is signed and the payment link is verified. Payment has not been completed.</div>'+
+  '<button type="button" class="primary" disabled>Pay $100 with Square</button>';
+ } else {
+  body='<h3>3. Select Hosting</h3><p>Choose the plan that works best for your site. Billing starts only when a subscription is confirmed.</p>'+
+  '<div class="journey-host-options"><label><input type="radio" name="journey-host" value="standard" '+(purchasePlan==='standard'?'checked':'')+'><span><strong>Standard Hosting</strong><small>$20/month</small></span></label>'+
+  '<label><input type="radio" name="journey-host" value="backend" '+(purchasePlan==='backend'?'checked':'')+'><span><strong>Backend Hosting</strong><small>$30/month</small></span></label></div>'+
+  '<button id="purchase-save-plan" class="primary" type="button">Save Hosting Selection</button><p class="journey-muted">Saving a selection does not start billing.</p>';
+ }
+ return '<div class="journey-dialog-body">'+list+'<div class="journey-purchase-stage-content">'+body+'</div><p id="purchase-notice" role="status" class="journey-muted">Your progress is tied to your portal account.</p></div>';
+}
+function setupSignatureCanvas(){
+ const canvas=$('#journey-sign');if(!canvas)return;
+ const ctx=canvas.getContext('2d');let drawing=false;
  function coords(e){const b=canvas.getBoundingClientRect();return {x:(e.clientX-b.left)*canvas.width/b.width,y:(e.clientY-b.top)*canvas.height/b.height}}
  canvas.addEventListener('pointerdown',e=>{drawing=true;canvas.setPointerCapture(e.pointerId);const p=coords(e);ctx.beginPath();ctx.moveTo(p.x,p.y)});
  canvas.addEventListener('pointermove',e=>{if(!drawing)return;const p=coords(e);ctx.lineWidth=3;ctx.lineCap='round';ctx.strokeStyle='#173459';ctx.lineTo(p.x,p.y);ctx.stroke()});
- canvas.addEventListener('pointerup',()=>drawing=false);canvas.addEventListener('pointercancel',()=>drawing=false);
+ canvas.addEventListener('pointerup',()=>drawing=false);
+ canvas.addEventListener('pointercancel',()=>drawing=false);
  $('#journey-clear-sign').onclick=()=>ctx.clearRect(0,0,canvas.width,canvas.height);
+}
+function renderPurchase(){
+ open(purchaseMarkup(),'Complete Your Purchase');
+ setupSignatureCanvas();
+ const options=wrapper.querySelectorAll('input[name="journey-host"]');
+ options.forEach(x=>x.onchange=async()=>{purchasePlan=x.value;await savePurchaseDraft()});
+ const save=$('#purchase-save-plan');
+ if(save)save.onclick=async()=>{if(!purchasePlan){$('#purchase-notice').textContent='Please select a hosting plan.';return}save.disabled=true;const ok=await savePurchaseDraft();if(ok)$('#purchase-notice').textContent='Hosting preference saved to your account. No subscription has been started.';save.disabled=false};
+}
+document.addEventListener('steadyhands:purchase-options',async()=>{
+ const {data:{user}}=await supabase.auth.getUser();if(!user)return;
+ purchaseUser=user;
+ const draft=user.user_metadata?.portal_purchase_draft||{};
+ purchasePlan=['standard','backend'].includes(draft.plan)?draft.plan:null;
+ // Progress is not considered paid or signed based solely on user-editable metadata.
+ purchaseStep=0;
+ renderPurchase();
 });
 $('#journey-dialog-close').onclick=close;
 wrapper.addEventListener('click',e=>{if(e.target===wrapper)close()});
