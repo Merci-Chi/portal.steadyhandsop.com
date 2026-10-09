@@ -111,3 +111,14 @@ body.wizard-open{overflow:hidden}#request-wizard-overlay{position:fixed;inset:0;
 .journey-terms-embedded .primary{flex-shrink:0;margin:0;padding:12px}
 
 .journey-signed{display:flex;gap:14px;align-items:center;border:1px solid #bde7cd;background:#e4f5eb;border-radius:13px;padding:18px;color:#176d3c}.journey-signed-check{display:grid;place-items:center;flex-shrink:0;width:38px;height:38px;border-radius:50%;background:#c4eacf;color:#176d3c;font-size:22px;font-weight:900}.journey-signed h3{margin:0 0 5px;font-size:17px;color:#176d3c}.journey-signed p{margin:0;font-size:12px;line-height:1.5;color:#287a49}
+
+/* Verified sequential checkout */
+.journey-purchase-stage{cursor:default}.journey-purchase-stage.complete{border-color:#bce4ca;background:#e7f6ed;color:#197445}.journey-purchase-stage.complete .stage-number{background:#18834e;color:white}
+.journey-progress-caption{display:flex;justify-content:space-between;font-size:12px;color:#607994;align-items:center}.journey-progress-caption strong{color:#1d6ba6}
+.journey-finish{text-align:center;padding:15px 2px 8px}.journey-finish-icon{width:74px;height:74px;border-radius:50%;background:#dff5e7;color:#15834c;display:grid;place-items:center;font-size:42px;font-weight:900;margin:0 auto 16px;animation:journey-check-in .6s both}.journey-finish h3{font-size:24px;color:#173a5e;margin:0 0 8px}.journey-finish>p{font-size:13px;color:#6b8197;line-height:1.6}
+.journey-finish-checks{margin:20px 0;display:grid;gap:10px;text-align:left}.journey-finish-checks div{padding:13px 16px;border:1px solid #c7ead3;background:#f0fbf4;color:#147849;border-radius:12px;font-size:13px;font-weight:800;opacity:0;transform:translateY(15px);animation:journey-fade-up .45s ease forwards}.journey-finish-checks div:nth-child(2){animation-delay:.18s}.journey-finish-checks div:nth-child(3){animation-delay:.36s}
+.journey-finish-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:25px}.journey-finish-actions button{opacity:0;transform:translateY(24px);animation:journey-fade-up .55s ease forwards;animation-delay:.6s;padding:14px 9px;border-radius:11px}.journey-finish-actions button:nth-child(2){animation-delay:.77s}
+@keyframes journey-check-in{from{transform:scale(.5);opacity:0}65%{transform:scale(1.1)}to{transform:scale(1);opacity:1}}
+@keyframes journey-fade-up{to{opacity:1;transform:translateY(0)}}
+@media(max-width:450px){.journey-finish-actions{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){.journey-finish-icon,.journey-finish-checks div,.journey-finish-actions button{animation:none;opacity:1;transform:none}}
