@@ -50,10 +50,10 @@ function purchaseMarkup(){
  let body='';
  if(purchaseStep===0){
   body='<h3>1. Sign Agreement</h3><p>Review the complete terms before placing your signature. This must be done before payment.</p>'+
-  '<div class="journey-info"><strong>Agreement not yet published</strong><p>Your final Steady Hands website agreement must be connected here before a signature can be saved. We will not record a signature against missing terms.</p></div>'+
+  '<div class="journey-info"><strong>Agreement preview</strong><p>Read the <button type="button" class="journey-terms-link" id="journey-view-terms">Terms &amp; Conditions</button> before signing. This sample is for review and is not yet the final binding agreement.</p></div>'+
   '<label class="journey-sign-label">Signature</label><canvas id="journey-sign" width="760" height="220" aria-label="Draw a signature"></canvas>'+
   '<button type="button" class="secondary" id="journey-clear-sign">Clear Signature</button>'+
-  '<label class="journey-agree"><input type="checkbox" id="journey-agree" disabled> I have read and agree to the website service agreement.</label>'+
+  '<label class="journey-agree"><input type="checkbox" id="journey-agree"> I have read and agree to the website service agreement.</label>'+
   '<button class="primary" disabled>Sign & Continue</button>';
  } else if(purchaseStep===1){
   body='<h3>2. Website Design</h3><p>Your website development fee is <strong>$100 one time</strong>.</p>'+
@@ -81,6 +81,7 @@ function setupSignatureCanvas(){
 function renderPurchase(){
  open(purchaseMarkup(),'Complete Your Purchase');
  setupSignatureCanvas();
+ const terms=$('#journey-view-terms');if(terms)terms.onclick=()=>{const modal=document.createElement('div');modal.className='journey-terms-overlay';modal.innerHTML='<section class="journey-terms-box" role="dialog" aria-modal="true" aria-label="Terms and Conditions"><h3>Website Service Agreement — Sample</h3><p><b>Development.</b> Website design costs $100 one time.</p><p><b>Hosting.</b> Standard $20/month or Backend $30/month; recurring charges are separate.</p><p><b>Revisions.</b> Reasonable revisions may be requested. Extra work may cost more with approval.</p><p><b>Materials.</b> The client supplies accurate information and authorized content.</p><p><b>Cancellation.</b> Hosting cancellation is subject to the final subscription terms.</p><p><b>Agreement.</b> A binding agreement and final payment authorization must be completed separately.</p><button type="button" class="primary" id="close-terms">Close</button></section>';document.body.appendChild(modal);modal.querySelector('#close-terms').onclick=()=>modal.remove();modal.onclick=e=>{if(e.target===modal)modal.remove()}};
  wrapper.querySelectorAll('[data-stage]').forEach(btn=>btn.onclick=()=>{purchaseStep=Number(btn.dataset.stage);renderPurchase()});
  const options=wrapper.querySelectorAll('input[name="journey-host"]');
  options.forEach(x=>x.onchange=async()=>{purchasePlan=x.value;await savePurchaseDraft()});
