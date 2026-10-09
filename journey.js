@@ -94,8 +94,26 @@ function renderPurchase(){
  wrapper.querySelectorAll('[data-stage]').forEach(btn=>{btn.onclick=()=>{if(Number(btn.dataset.stage)>0&&!signedAgreement){$('#purchase-notice').textContent='Please sign your agreement first.';return}purchaseStep=Number(btn.dataset.stage);renderPurchase()}});
  const options=wrapper.querySelectorAll('input[name="journey-host"]');
  options.forEach(x=>x.onchange=async()=>{purchasePlan=x.value;await savePurchaseDraft()});
- const design=$('#pay-website-design');if(design)design.onclick=()=>{const notice=$('#purchase-notice');notice.textContent='Secure Square checkout cannot open until the final agreement has been published, signed, and verified. The saved sample signature does not authorize payment.';notice.scrollIntoView({block:'nearest',behavior:'smooth'})};
- const hosting=$('#purchase-hosting-checkout');if(hosting)hosting.onclick=()=>{const notice=$('#purchase-notice');notice.textContent=purchasePlan?'Your '+(purchasePlan==='backend'?'Backend':'Standard')+' choice is saved. Square checkout will open once your final signed agreement and website design payment are verified.':'Select a hosting plan first.';notice.scrollIntoView({block:'nearest',behavior:'smooth'})};
+ const noticeCheckout=message=>{const el=$('#purchase-notice');if(el)el.textContent=message};
+ async function checkout(kind,button){
+  if(!signedAgreement?.id){noticeCheckout('Please sign your current agreement first.');return}
+  button.disabled=true;noticeCheckout('Preparing your personal Square checkout link…');
+  // Open synchronously in response to click, so popup blockers do not interfere.
+  const checkoutWindow=window.open('','_blank');
+  if(checkoutWindow){checkoutWindow.document.title='Preparing Square Checkout';checkoutWindow.document.body.textContent='Preparing your secure Square checkout…'}
+  try{
+   const {checkoutUrl,checkoutId}=await createCustomerCheckout(kind,{agreementId:signedAgreement.id});
+   sessionStorage.setItem('steadyhands_checkout_pending',JSON.stringify({checkoutId,kind,userId:purchaseUser.id}));
+   if(checkoutWindow){checkoutWindow.opener=null;checkoutWindow.location.replace(checkoutUrl)}
+   else window.location.assign(checkoutUrl);
+   noticeCheckout('Your individual Square payment link is ready. Complete payment in the new tab.');
+  }catch(error){
+   if(checkoutWindow&&!checkoutWindow.closed)checkoutWindow.close();
+   noticeCheckout('Could not start checkout: '+(error.message||'Please try again.'));
+  }finally{button.disabled=false}
+ }
+ const design=$('#pay-website-design');if(design)design.onclick=()=>checkout('development',design);
+ const hosting=$('#purchase-hosting-checkout');if(hosting)hosting.onclick=async()=>{if(!purchasePlan){noticeCheckout('Select your hosting plan first.');return}await checkout(purchasePlan,hosting)};
  const save=$('#purchase-save-plan');
  if(save)save.onclick=async()=>{if(!purchasePlan){$('#purchase-notice').textContent='Please select a hosting plan.';return}save.disabled=true;const ok=await savePurchaseDraft();if(ok)$('#purchase-notice').textContent='Hosting preference saved to your account. No subscription has been started.';save.disabled=false};
 }
