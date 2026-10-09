@@ -39,13 +39,13 @@ async function editMyRequest(id){
  const title=prompt('Edit request subject:',r.title);if(title===null)return;
  const details=prompt('Edit request details:',r.details||'');if(details===null)return;
  if(!title.trim()||!details.trim()){alert('Subject and details are required.');return}
- const {error}=await supabase.from('portal_service_requests').update({title:title.trim(),details:details.trim()}).eq('id',id).eq('user_id',user.id).eq('status','submitted').is('deleted_at',null);
+ const {error}=await supabase.rpc('portal_edit_own_request',{request_id:id,new_title:title.trim(),new_details:details.trim()});
  if(error){alert('Could not edit request: '+error.message);return}
  await loadRecords();render();
 }
 async function deleteMyRequest(id){
  const r=requests.find(x=>x.id===id);if(!r||!confirm('Remove this request from your portal? Steady Hands will retain it under Deleted.'))return;
- const {error}=await supabase.from('portal_service_requests').update({deleted_at:new Date().toISOString()}).eq('id',id).eq('user_id',user.id).is('deleted_at',null);
+ const {error}=await supabase.rpc('portal_delete_own_request',{request_id:id});
  if(error){alert('Could not delete request: '+error.message);return}
  await loadRecords();render();
 }
