@@ -15,7 +15,7 @@ function phoneFormat(raw){
 }
 function show(){step=0;success=false;working=false;data.type=sessionStorage.getItem('portal_request_type')||'website';if(!types[data.type])data.type='website';sessionStorage.removeItem('portal_request_type');data.title='';data.details='';data.contact='';mode='email';shell.hidden=false;document.body.classList.add('wizard-open');render()}
 function close(){if(working)return;shell.hidden=true;document.body.classList.remove('wizard-open');if(success)location.reload()}
-function capture(){if(step===0){data.type=$('#wizard-type').value;data.title=$('#wizard-subject').value.trim()}if(step===1)data.details=$('#wizard-description').value.trim();if(step===2){mode=$('input[name=wizard-method]:checked').value;data.contact=$('#wizard-contact').value.trim()}}
+function capture(){if(step===0){data.title=$('#wizard-subject').value.trim()}if(step===1)data.details=$('#wizard-description').value.trim();if(step===2){mode=$('input[name=wizard-method]:checked').value;data.contact=$('#wizard-contact').value.trim()}}
 function render(){
  $('#wizard-error').textContent='';
  const fill=(step+1)/3*100;$('#wizard-progress-fill').style.width=fill+'%';$('#wizard-step-label').textContent='Step '+(step+1)+' of 3';$('#wizard-progress-percent').textContent=Math.round(fill)+'%';
@@ -38,6 +38,7 @@ async function advance(){if(working)return;const error=validate();if(error){$('#
 }
 document.addEventListener('click',e=>{if(e.target.closest('#open-request-wizard'))show()});
 shell.addEventListener('click',e=>{if(e.target===shell||e.target.closest('.wizard-close'))close();if(e.target.closest('.wizard-back')){capture();step=Math.max(0,step-1);render()}if(e.target.closest('.wizard-next'))success?close():advance()});
+shell.addEventListener('click',e=>{const option=e.target.closest('[data-wizard-type]');if(!option)return;data.type=option.dataset.wizardType;document.querySelectorAll('[data-wizard-type]').forEach(el=>{el.classList.toggle('selected',el===option);el.setAttribute('aria-pressed',String(el===option))})});
 shell.addEventListener('change',e=>{if(e.target.name==='wizard-method'){mode=e.target.value;data.contact='';render()}});
 shell.addEventListener('input',e=>{if(e.target.id==='wizard-contact'&&mode==='text'){const p=e.target;p.value=phoneFormat(p.value)}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!shell.hidden)close()});
