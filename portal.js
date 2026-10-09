@@ -38,10 +38,10 @@ document.addEventListener('touchend',e=>{if(!gesture||innerWidth>760)return;cons
 $('#logout').onclick=async()=>{await supabase.auth.signOut();location.replace('login.html')};
 async function boot(){const {data:{session},error}=await supabase.auth.getSession();if(error||!session){location.replace('login.html');return}user=session.user;$('#avatar').textContent=(user.email||'SH').slice(0,2).toUpperCase();
  const p=await supabase.from('portal_profiles').select('full_name,phone').eq('user_id',user.id).maybeSingle();
- if(p.error){$('#main').innerHTML=empty('Unable to load profile',p.error.message);return}profile=p.data||{full_name:'',phone:''}; if(!profile.full_name?.trim()){location.replace('onboarding.html');return;}
+ if(p.error){$('#main').innerHTML=empty('Unable to load profile',p.error.message);return}profile=p.data||{full_name:'',phone:''}; if(!profile.full_name?.trim()||!String(user.user_metadata?.portal_company_name||'').trim()){location.replace('onboarding.html');return;}
  const m=await supabase.from('portal_memberships').select('company_id,role').eq('user_id',user.id);
  if(m.error){$('#main').innerHTML=empty('Unable to load memberships',m.error.message);return}
  if(m.data?.length){const ids=m.data.map(x=>x.company_id);const c=await supabase.from('portal_companies').select('id,company_name,status').in('id',ids);if(c.error){$('#main').innerHTML=empty('Unable to load companies',c.error.message);return}companies=c.data||[];current=companies[0]||null}
- $('#company-label').textContent=current?.company_name||'My Workspace';$('#company-letter').textContent=(current?.company_name||'S').charAt(0).toUpperCase();render();
+ $('#company-label').textContent=current?.company_name||user.user_metadata?.portal_company_name||'My Workspace';$('#company-letter').textContent=(current?.company_name||user.user_metadata?.portal_company_name||'S').charAt(0).toUpperCase();render();
 }
 supabase.auth.onAuthStateChange((event)=>{if(event==='SIGNED_OUT')location.replace('login.html')});boot();
