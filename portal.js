@@ -13,7 +13,8 @@ function previewCards(){return previews.length?previews.map(p=>panel(safe(p.site
 function journeyMarkup(){
  const hasRequest=requests.some(r=>r.request_type==='preview');
  const hasPreview=previews.length>0;
- const percent=(hasRequest?1:0)+(hasPreview?1:0);
+ // A preview being assigned is not the same as the customer approving it.
+ const percent=hasRequest?1:0;
  const item=(n,done,title,desc,actions,active)=>'<article class="journey-step '+(active?'journey-active':'')+'"><div class="journey-number '+(done?'journey-done':'')+'">'+(done?'✓':n)+'</div><div class="journey-step-copy"><h3>'+title+'</h3><p>'+desc+'</p><div class="journey-actions">'+actions+'</div></div></article>';
  return '<section class="panel journey-card"><div class="journey-heading"><div><span class="request-section-kicker">YOUR PROGRESS</span><h2>Your Website Journey</h2><p>From first preview to launch, in three simple steps.</p></div><strong>'+percent+' of 3</strong></div><div class="journey-meter"><div style="width:'+(percent/3*100)+'%"></div></div>'+
  item(1,hasRequest,'Request Free Preview','Tell us what you have in mind. Share a link to invite someone else.', '<button class="primary" data-open-preview>'+(hasRequest?'Request Another Preview':'Request Preview')+'</button><button class="secondary" data-share-invite>Share</button>',!hasRequest)+
