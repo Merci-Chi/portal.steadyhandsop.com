@@ -99,3 +99,5 @@ body.wizard-open{overflow:hidden}#request-wizard-overlay{position:fixed;inset:0;
 .journey-agree input{margin-top:2px}
 .journey-purchase-stage-content>.primary{border-radius:11px;padding:14px}
 @media(max-width:480px){.journey-purchase-stage{flex-direction:column;gap:5px;padding:10px 4px;font-size:10px}}
+
+.journey-terms-link{border:0;background:transparent;color:#145fa9;font-weight:800;text-decoration:underline;cursor:pointer;padding:0}.journey-terms-overlay{position:fixed;inset:0;z-index:1600;background:#081d3999;display:grid;place-items:center;padding:16px}.journey-terms-box{width:min(100%,490px);max-height:85dvh;overflow-y:auto;background:white;border-radius:17px;padding:26px;color:#18365a;box-shadow:0 20px 60px #001a3855}.journey-terms-box h3{margin:0 0 15px}.journey-terms-box p{font-size:13px;line-height:1.65}.journey-terms-box .primary{margin-top:12px;width:100%;padding:12px}
