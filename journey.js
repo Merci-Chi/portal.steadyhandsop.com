@@ -108,8 +108,9 @@ function renderPurchase(){
    else window.location.assign(checkoutUrl);
    noticeCheckout('Your individual Square payment link is ready. Complete payment in the new tab.');
   }catch(error){
-   if(checkoutWindow&&!checkoutWindow.closed)checkoutWindow.close();
-   noticeCheckout('Could not start checkout: '+(error.message||'Please try again.'));
+   const message='Could not start checkout: '+(error.message||'Please try again.');
+   if(checkoutWindow&&!checkoutWindow.closed){checkoutWindow.document.body.innerHTML='';const status=checkoutWindow.document.createElement('div');status.style.cssText='font:16px system-ui;max-width:540px;margin:14vh auto;padding:28px;color:#173459';const heading=checkoutWindow.document.createElement('h2');heading.textContent='Square checkout could not be opened';const p=checkoutWindow.document.createElement('p');p.textContent=message;status.append(heading,p);checkoutWindow.document.body.append(status)}
+   noticeCheckout(message);
   }finally{button.disabled=false}
  }
  const design=$('#pay-website-design');if(design)design.onclick=()=>checkout('development',design);
