@@ -14,3 +14,25 @@
 .onboarding-card #message{margin:17px 0 10px;min-height:0;color:#ac3333}
 .onboarding-card #signout{display:block;margin:8px auto 0;padding:10px 16px}
 @media(max-width:480px){.onboarding-card{padding:28px 23px}.onboarding-card .sub{margin-bottom:23px}}
+
+/* Unified Steady Hands client login controls (Onboarding / Outreach design). */
+.portal-tagline-art{display:block;width:min(100%,610px);aspect-ratio:2048/260;margin-top:12px;background:#d5edff;-webkit-mask:url("images/you-run-the-show.png") left center/contain no-repeat;mask:url("images/you-run-the-show.png") left center/contain no-repeat}
+.brand-copy h1{line-height:1.12}
+.portal-login-options{display:grid;gap:12px;margin:15px 0 23px}
+.portal-check-label{display:flex;align-items:center;gap:11px;color:#173653;font-size:14px;font-weight:800;line-height:1.4;cursor:pointer;position:relative}
+.portal-check-label>input{position:absolute;width:25px;height:25px;margin:0;opacity:0}
+.portal-check-box{width:25px;height:25px;flex:0 0 25px;border:2px solid #c5d2df;border-radius:8px;display:grid;place-items:center;color:transparent;background:#fff;transition:background .15s,border-color .15s}
+.portal-check-label>input:checked+.portal-check-box{background:#1877e8;border-color:#1877e8;color:#fff}
+.portal-check-label>input:focus-visible+.portal-check-box{outline:3px solid #39b8ff;outline-offset:2px}
+.portal-check-label.invalid .portal-check-box{border-color:#bf323c}
+.portal-check-label a{color:#1677e8;font-weight:900;text-decoration:underline;text-underline-offset:3px}
+#portal-terms-error{margin:-4px 0 0;color:#b3333c;font-size:12px;font-weight:700}
+#portal-terms-error[hidden]{display:none}
+.portal-login-submit{min-height:56px;background:#247bed;border-radius:16px;display:flex;align-items:center;justify-content:center;gap:16px;font-size:19px;box-shadow:0 12px 24px #247bed22}
+.portal-login-submit span:last-child{font-size:25px;font-weight:400}
+.portal-forgot{display:block;margin:13px auto 0;color:#52657c;font-size:14px;text-decoration:underline;text-underline-offset:3px}
+.portal-forgot[hidden]{display:none}
+.portal-login-foot{font-weight:800;color:#98a9bf;margin-top:20px;display:flex;align-items:center;gap:13px}
+.portal-login-foot::before,.portal-login-foot::after{content:"";height:1px;background:#dbe3eb;flex:1}
+.auth-card{max-height:calc(100dvh - 24px);overflow-y:auto}
+@media(max-width:850px){.auth-card{max-height:none}}
