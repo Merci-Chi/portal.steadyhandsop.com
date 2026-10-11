@@ -3,6 +3,7 @@ import {verifyCustomerCheckout} from './square-checkout.js';
 const $=s=>document.querySelector(s),safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let user=null,profile=null,companies=[],current=null,requests=[],previews=[];
 let invitationError='',invitationPreviews=[];
+let privateFulfillmentProgress=[];
 let purchaseComplete=false;
 let approvedPreviewKeys=new Set();
 const publicPreviewCodes={'SHS-GHWH26M9R7Q2':{site_title:'Greenhouse Water Heaters',preview_url:'https://steadyhandsop.com/sites/greenhousewaterheaters/'}};
@@ -21,6 +22,8 @@ function journeyMarkup(){
  const hasPreview=previews.length>0;
  const p=previews[0];
  const hasApproval=previews.some(p=>approvedPreviewKeys.has(p.site_key));
+ if(invitationPreviews.length && purchaseComplete){const ip=invitationPreviews[0];const step=privateFulfillmentProgress.find(x=>String(x.sale_id)===String(ip.site_key||'').replace(/^invited-/,'') ); const status=step?String(step.fulfillment_status||'awaiting_assignment').replaceAll('_',' '):'handoff pending';return '<section class="panel journey-card"><h2>Purchase completed</h2><p>Your website request has been passed to our website team.</p><p>Website progress: <strong>'+safe(status)+'</strong></p></section>';}
+
  if(invitationPreviews.length){const ip=invitationPreviews[0];return '<section class="panel journey-card"><div class="journey-heading"><div><span class="request-section-kicker">YOUR REGISTRATION</span><h2>Your website is linked</h2><p>Your salesperson has already assigned your preview. No code is necessary.</p></div></div><div class="journey-step"><span class="journey-number journey-done">✓</span><div class="journey-step-copy"><h3>1. Registration</h3><p>Your customer account is ready.</p></div></div><div class="journey-step"><span class="journey-number journey-done">✓</span><div class="journey-step-copy"><h3>2. Your website preview</h3><p>Your preview is automatically attached to your account.</p><a class="primary journey-action" target="_blank" rel="noopener noreferrer" href="'+safe(ip.preview_url)+'">View Your Preview</a></div></div><div class="journey-step"><span class="journey-number">3</span><div class="journey-step-copy"><h3>Complete Your Purchase</h3><p>Sign your agreement, then complete development and hosting checkout.</p><button class="primary" data-journey-purchase>Continue to Agreement &amp; Payment</button></div></div></section>'+(invitationError?'<p class="notice" role="alert">'+safe(invitationError)+'</p>':'');}
 
  if(purchaseComplete&&hasRequest&&hasApproval)return '<section class="panel journey-card"><div class="journey-heading"><div><span class="request-section-kicker">ONBOARDING COMPLETE</span><h2>Everything is complete!</h2><p>Thank you! Your website request has been submitted.</p></div><span style="font-size:38px;color:#168151">✓</span></div><div class="journey-preview-status"><h3>We are preparing your website</h3><p>Our team is reviewing your information and getting your site ready. You can follow development updates here. We will notify you when it is ready for review.</p></div><div class="journey-wait-steps"><span class="ready">✓ Request submitted</span><span>○ Planning & content review</span><span>○ Website development</span><span>○ Quality check</span><span>○ Ready for your review</span></div></section>';
@@ -64,6 +67,11 @@ function setupRequestDropdown(){requestDropdownAbort.abort();requestDropdownAbor
 let requestDropdownAbort=new AbortController();
 async function saveProfile(e){e.preventDefault();const button=e.target.querySelector('button[type=submit]');button.disabled=true;const name=$('#full-name').value.trim(),company=$('#company-name').value.trim();if(!name||!company){$('#profile-message').textContent='Both fields are required.';button.disabled=false;return}const {error:metadataError}=await supabase.auth.updateUser({data:{portal_company_name:company}});if(metadataError){$('#profile-message').textContent=metadataError.message;button.disabled=false;return}user.user_metadata={...user.user_metadata,portal_company_name:company};const {error}=await supabase.from('portal_profiles').upsert({user_id:user.id,full_name:name,updated_at:new Date().toISOString()},{onConflict:'user_id'});$('#profile-message').textContent=error?error.message:'Saved successfully.';if(!error)profile.full_name=name;button.disabled=false}
 async function submitRequest(e){e.preventDefault();const button=e.target.querySelector('button[type=submit]');button.disabled=true;const record={user_id:user.id,company_name:user.user_metadata?.portal_company_name||'',request_type:$('#type').value,title:$('#request-title').value.trim(),details:$('#request-details').value.trim()};const {error}=await supabase.from('portal_service_requests').insert(record);if(error){$('#request-message').textContent='Request could not be saved. The portal requests database setup may still be needed: '+error.message;button.disabled=false;return}await loadRecords();render()}
+async function loadCustomerFulfillment(){
+ privateFulfillmentProgress=[];
+ const {data,error}=await supabase.rpc('sh_my_customer_fulfillment_status');
+ if(!error)privateFulfillmentProgress=data||[];
+}
 async function loadInvitationPreviews(){
  const {data,error}=await supabase.rpc('sh_my_portal_invited_previews');
  if(error){invitationError='Automatic preview lookup is unavailable. Please contact support if you need help accessing your invitation.';invitationPreviews=[];return;}
@@ -161,6 +169,6 @@ async function boot(){const {data:{session},error}=await supabase.auth.getSessio
  const m=await supabase.from('portal_memberships').select('company_id,role').eq('user_id',user.id);
  if(m.error){$('#main').innerHTML=empty('Unable to load memberships',m.error.message);return}
  if(m.data?.length){const ids=m.data.map(x=>x.company_id);const c=await supabase.from('portal_companies').select('id,company_name,status').in('id',ids);if(c.error){$('#main').innerHTML=empty('Unable to load companies',c.error.message);return}companies=c.data||[];current=companies[0]||null}
- await redeemSalespersonInvitation();await loadRecords();await checkPurchaseCompleted();$('#company-label').textContent=current?.company_name||user.user_metadata?.portal_company_name||'My Workspace';$('#company-letter').textContent=(current?.company_name||user.user_metadata?.portal_company_name||'S').charAt(0).toUpperCase();render();
+ await redeemSalespersonInvitation();await loadRecords();await loadCustomerFulfillment();await checkPurchaseCompleted();$('#company-label').textContent=current?.company_name||user.user_metadata?.portal_company_name||'My Workspace';$('#company-letter').textContent=(current?.company_name||user.user_metadata?.portal_company_name||'S').charAt(0).toUpperCase();render();
 }
 supabase.auth.onAuthStateChange((event)=>{if(event==='SIGNED_OUT')location.replace('login.html')});boot();
