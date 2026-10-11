@@ -1,9 +1,10 @@
 import {supabase} from './supabase-client.js';
 import {PORTAL_URL} from './config.js';
 const $=s=>document.querySelector(s), msg=(m,error=false)=>{const el=$('#message');el.textContent=m;el.className=error?'error':'success'};
-let mode='signin';const previewCode=new URLSearchParams(location.search).get('preview_code')||sessionStorage.getItem('steadyhands.preview_code');
-const redirect=PORTAL_URL+'/index.html'+(previewCode?'?preview_code='+encodeURIComponent(previewCode):'');
-const inviteCode=new URLSearchParams(location.search).get('preview_code');if(inviteCode&&/^[A-Za-z0-9_-]{16,160}$/.test(inviteCode))sessionStorage.setItem('steadyhands.preview_code',inviteCode);
+let mode='signin';const q=new URLSearchParams(location.search);
+const token=q.get('invite')||sessionStorage.getItem('steadyhands.portal.invite')||'';
+if(q.get('invite')&&/^[a-f0-9]{64}$/i.test(q.get('invite')))sessionStorage.setItem('steadyhands.portal.invite',q.get('invite'));
+const redirect=PORTAL_URL+'/index.html'+(/^[a-f0-9]{64}$/i.test(token)?'?invite='+encodeURIComponent(token):'');
 const email=$('#email');const remembered=localStorage.getItem('steadyhands.savedEmail');if(remembered){email.value=remembered;$('#remember').checked=true}
 function saveEmail(){if($('#remember').checked)localStorage.setItem('steadyhands.savedEmail',email.value.trim());else localStorage.removeItem('steadyhands.savedEmail')}
 function setMode(m){mode=m;$('#tab-signin').classList.toggle('selected',m==='signin');$('#tab-signup').classList.toggle('selected',m==='signup');$('#heading').textContent=m==='signin'?'Welcome back':'Create your account';$('#subheading').textContent=m==='signin'?'Sign in to access your Steady Hands account.':'Get started with your Steady Hands workspace.';$('#submit-label').textContent=m==='signin'?'Sign in':'Sign up';$('#password').autocomplete=m==='signin'?'current-password':'new-password';$('#forgot').hidden=m!=='signin';msg('')}
