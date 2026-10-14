@@ -108,10 +108,19 @@ async function downloadSignedAgreement(button){
   const timeText=new Intl.DateTimeFormat('en-US',{year:'numeric',month:'long',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}).format(date);
   page.drawText('Signed on: '+timeText.slice(0,92),{x:44,y:151,size:10,font,color:navy});
   page.drawText('Signature recorded electronically for this specific website.',{x:44,y:121,size:9,font,color:muted});
-  const bytes=await pdf.save();
-  const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
-  const a=document.createElement('a');a.href=url;a.download='steady-hands-signed-agreement-'+String(currentProjectId).replace(/[^a-z0-9_-]/gi,'')+'.pdf';document.body.appendChild(a);a.click();a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),60000);
+  // Safari's PDF viewer is more reliable with conventional, non-object-stream PDFs.
+  const bytes=await pdf.save({useObjectStreams:false,addDefaultPage:false});
+  const raw=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength);
+  const prefix=new TextDecoder('ascii').decode(new Uint8Array(raw,0,Math.min(raw.byteLength,8)));
+  if(!prefix.startsWith('%PDF-')||raw.byteLength<1000)throw new Error('The generated PDF is invalid. Please try again.');
+  const blob=new Blob([raw],{type:'application/pdf'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='steady-hands-signed-agreement-'+String(currentProjectId).replace(/[^a-z0-9_-]/gi,'')+'.pdf';
+  document.body.appendChild(a);a.click();a.remove();
+  // Keep the temporary URL alive long enough for Safari to finish downloading.
+  setTimeout(()=>URL.revokeObjectURL(url),300000);
  }finally{if(button){button.disabled=false;button.textContent=previous}}
 }
 function purchaseDraft(){return {plan:purchasePlan,checkoutSessions,updated_at:new Date().toISOString()}}
