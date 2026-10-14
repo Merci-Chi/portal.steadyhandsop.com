@@ -148,7 +148,7 @@ document.addEventListener('steadyhands:purchase-options',async()=>{
  const {data:{user}}=await supabase.auth.getUser();if(!user)return;
  purchaseUser=user;
  const draft=user.user_metadata?.portal_purchase_draft||{};
- purchasePlan=['standard','backend'].includes(draft.plan)?draft.plan:null;
+ const preferredPlan=sessionStorage.getItem('portal_preferred_plan');sessionStorage.removeItem('portal_preferred_plan');purchasePlan=['standard','backend'].includes(preferredPlan)?preferredPlan:(['standard','backend'].includes(draft.plan)?draft.plan:null);
  checkoutSessions=draft.checkoutSessions||{};
  designPaid=false;hostingPaid=false;developmentBypass=false;hostingDiscount=false;
  // Progress is not considered paid or signed based solely on user-editable metadata.
