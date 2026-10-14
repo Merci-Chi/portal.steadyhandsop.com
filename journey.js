@@ -67,6 +67,55 @@ function loadPdfLib(){
  }).catch(err=>{pdfLibLoading=null;throw err});
  return pdfLibLoading;
 }
+let pdfJsLoading=null;
+function loadPdfJs(){
+ if(window.pdfjsLib)return Promise.resolve(window.pdfjsLib);
+ if(pdfJsLoading)return pdfJsLoading;
+ pdfJsLoading=new Promise((resolve,reject)=>{
+  const script=document.createElement('script');
+  script.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+  script.onload=()=>{
+   if(!window.pdfjsLib){reject(new Error('Agreement PDF renderer could not be initialized.'));return}
+   // Disable separate worker loading; the same library handles local and hosted use.
+   window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+   resolve(window.pdfjsLib);
+  };
+  script.onerror=()=>reject(new Error('Agreement PDF renderer could not load. Check your internet connection.'));
+  document.head.appendChild(script);
+ }).catch(error=>{pdfJsLoading=null;throw error});
+ return pdfJsLoading;
+}
+async function renderAgreementToFreshPdf(original,PDFLib){
+ const pdfjs=await loadPdfJs();
+ const task=pdfjs.getDocument({data:new Uint8Array(original),disableAutoFetch:true,disableStream:true});
+ const source=await task.promise;
+ if(!source.numPages)throw new Error('The agreement PDF contains no pages.');
+ const pdf=await PDFLib.PDFDocument.create();
+ pdf.setTitle('Steady Hands — Signed Website Services Agreement');
+ pdf.setSubject('Website-specific signed agreement');
+ pdf.setCreator('Steady Hands Client Portal');
+ try{
+  for(let i=1;i<=source.numPages;i++){
+   const sourcePage=await source.getPage(i);
+   const originalViewport=sourcePage.getViewport({scale:1});
+   const scale=Math.min(2,2400/Math.max(originalViewport.width,originalViewport.height));
+   const viewport=sourcePage.getViewport({scale});
+   const canvas=document.createElement('canvas');
+   canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+   const ctx=canvas.getContext('2d',{alpha:false});
+   if(!ctx)throw new Error('Could not prepare the PDF page image.');
+   ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);
+   await sourcePage.render({canvasContext:ctx,viewport,background:'white'}).promise;
+   const jpgData=canvas.toDataURL('image/jpeg',.94);
+   const image=await pdf.embedJpg(jpgData);
+   const page=pdf.addPage([originalViewport.width,originalViewport.height]);
+   page.drawImage(image,{x:0,y:0,width:originalViewport.width,height:originalViewport.height});
+   canvas.width=0;canvas.height=0;
+   sourcePage.cleanup();
+  }
+ }finally{await task.destroy()}
+ return pdf;
+}
 function signedDateText(){
  const d=new Date(signedAgreement?.signed_at);
  return Number.isFinite(d.getTime())?new Intl.DateTimeFormat('en-US',{year:'numeric',month:'long',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}).format(d):'Date not available';
@@ -82,7 +131,9 @@ async function downloadSignedAgreement(button){
   const [PDFLib,response]=await Promise.all([loadPdfLib(),fetch(AGREEMENT_PDF)]);
   if(!response.ok)throw new Error('Could not load the agreement PDF.');
   const original=await response.arrayBuffer();
-  const pdf=await PDFLib.PDFDocument.load(original);
+  // Render each agreement page into a NEW document: never reuse PDF object
+  // references from the source file, which macOS Preview may reject.
+  const pdf=await renderAgreementToFreshPdf(original,PDFLib);
   const page=pdf.addPage([612,792]);
   const font=await pdf.embedFont(PDFLib.StandardFonts.Helvetica);
   const bold=await pdf.embedFont(PDFLib.StandardFonts.HelveticaBold);
@@ -109,11 +160,15 @@ async function downloadSignedAgreement(button){
   page.drawText('Signed on: '+timeText.slice(0,92),{x:44,y:151,size:10,font,color:navy});
   page.drawText('Signature recorded electronically for this specific website.',{x:44,y:121,size:9,font,color:muted});
   // Safari's PDF viewer is more reliable with conventional, non-object-stream PDFs.
-  const bytes=await pdf.save({useObjectStreams:false,addDefaultPage:false});
+  const bytes=await pdf.save({useObjectStreams:false});
   const raw=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength);
-  const prefix=new TextDecoder('ascii').decode(new Uint8Array(raw,0,Math.min(raw.byteLength,8)));
-  if(!prefix.startsWith('%PDF-')||raw.byteLength<1000)throw new Error('The generated PDF is invalid. Please try again.');
-  const blob=new Blob([raw],{type:'application/pdf'});
+  const prefix=new TextDecoder('ascii').decode(bytes.subarray(0,8));
+  const suffix=new TextDecoder('ascii').decode(bytes.subarray(Math.max(0,bytes.length-512)));
+  if(!prefix.startsWith('%PDF-')||!suffix.includes('%%EOF')||bytes.length<1000)
+   throw new Error('Generated PDF is incomplete. Please retry.');
+  const checked=await PDFLib.PDFDocument.load(raw);
+  if(checked.getPageCount()<2)throw new Error('Generated PDF failed page verification.');
+  const blob=new Blob([bytes],{type:'application/pdf'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;
