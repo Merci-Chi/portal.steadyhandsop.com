@@ -1,3 +1,4 @@
+import {hostingCards} from './website-projects.js?v=20261014-payment-card-popup';
 import {supabase} from './supabase-client.js';
 import {createCustomerCheckout,verifyCustomerCheckout} from './square-checkout.js';
 const wrapper=document.createElement('div');wrapper.id='journey-dialog-overlay';wrapper.hidden=true;
@@ -34,30 +35,98 @@ document.addEventListener('steadyhands:approve-preview',async e=>{
 const purchaseSteps=[
  {title:'Sign Agreement',hint:'Review and sign your website service agreement.'},
  {title:'Website Design',hint:'Complete the $100 one-time website development payment.'},
- {title:'Select Hosting',hint:'Choose Standard or Backend hosting.'}
+ {title:'Select Hosting',hint:'Choose Standard Hosting or Business Hosting.'}
 ];
 let purchaseStep=0;
 let purchasePlan=null;
 let purchaseSaving=false;
 let signatureDrawn=false;
 let purchaseUser=null;
+let purchaseProject=null;
 let signedAgreement=null;
+let showingAgreementApproval=false;
 let designPaid=false,hostingPaid=false,developmentBypass=false,hostingDiscount=false;
 let checkoutSessions={};
-const AGREEMENT_VERSION='2026-10-09';
-async function loadSignedAgreement(userId){const {data,error}=await supabase.from('portal_agreement_signatures').select('id,agreement_version,signed_at').eq('user_id',userId).eq('agreement_version',AGREEMENT_VERSION).eq('acknowledged',true).order('signed_at',{ascending:false}).limit(1).maybeSingle();if(error)throw error;return data;}
-function purchaseKey(){return 'steadyhands_purchase_draft_'+(purchaseUser?.id||'unknown')}
+const AGREEMENT_VERSION='2026-10-14-project-v1';
+async function loadSignedAgreement(userId){
+ if(!purchaseProject?.id)throw new Error('Choose a website to sign its agreement.');
+ const {data,error}=await supabase.from('portal_project_agreements').select('id,agreement_version,signed_at,signature_png,website_name').eq('user_id',userId).eq('project_id',purchaseProject.id).eq('agreement_version',AGREEMENT_VERSION).eq('acknowledged',true).maybeSingle();
+ if(error)throw error;return data;
+}
+const AGREEMENT_PDF='website-services-agreement.pdf';
+let pdfLibLoading=null;
+function loadPdfLib(){
+ if(window.PDFLib)return Promise.resolve(window.PDFLib);
+ if(pdfLibLoading)return pdfLibLoading;
+ pdfLibLoading=new Promise((resolve,reject)=>{
+  const script=document.createElement('script');
+  script.src='https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+  script.onload=()=>window.PDFLib?resolve(window.PDFLib):reject(new Error('PDF generator failed to load.'));
+  script.onerror=()=>reject(new Error('PDF generator is unavailable. Check your internet connection.'));
+  document.head.appendChild(script);
+ }).catch(err=>{pdfLibLoading=null;throw err});
+ return pdfLibLoading;
+}
+function signedDateText(){
+ const d=new Date(signedAgreement?.signed_at);
+ return Number.isFinite(d.getTime())?new Intl.DateTimeFormat('en-US',{year:'numeric',month:'long',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}).format(d):'Date not available';
+}
+async function downloadSignedAgreement(button){
+ if(!purchaseProject?.id||!signedAgreement?.id)throw new Error('No signed website agreement was found.');
+ const currentProjectId=purchaseProject.id, currentAgreementId=signedAgreement.id;
+ const {data,error}=await supabase.from('portal_project_agreements').select('id,user_id,project_id,agreement_version,website_name,signature_png,signed_at').eq('id',currentAgreementId).eq('project_id',currentProjectId).eq('user_id',purchaseUser.id).eq('acknowledged',true).single();
+ if(error||!data?.signature_png)throw new Error(error?.message||'The saved signature could not be loaded.');
+ if(data.agreement_version!==AGREEMENT_VERSION)throw new Error('This agreement uses an older version; please contact support for the correct document.');
+ const previous=button?.textContent;if(button){button.disabled=true;button.textContent='Preparing signed PDF…'}
+ try{
+  const [PDFLib,response]=await Promise.all([loadPdfLib(),fetch(AGREEMENT_PDF)]);
+  if(!response.ok)throw new Error('Could not load the agreement PDF.');
+  const original=await response.arrayBuffer();
+  const pdf=await PDFLib.PDFDocument.load(original);
+  const page=pdf.addPage([612,792]);
+  const font=await pdf.embedFont(PDFLib.StandardFonts.Helvetica);
+  const bold=await pdf.embedFont(PDFLib.StandardFonts.HelveticaBold);
+  const navy=PDFLib.rgb(.08,.19,.35),muted=PDFLib.rgb(.35,.44,.55);
+  page.drawRectangle({x:0,y:742,width:612,height:50,color:navy});
+  page.drawText('STEADY HANDS OPERATIONS', {x:44,y:762,size:15,font:bold,color:PDFLib.rgb(1,1,1)});
+  page.drawText('SIGNED WEBSITE SERVICES AGREEMENT', {x:44,y:686,size:17,font:bold,color:navy});
+  page.drawText('The signature below applies to the attached agreement for the website:', {x:44,y:648,size:10,font,color:muted});
+  const website=String(data.website_name||purchaseProject.display_name||'Website');
+  page.drawText(website.slice(0,80),{x:44,y:625,size:13,font:bold,color:navy});
+  page.drawText('Agreement version: '+String(data.agreement_version),{x:44,y:594,size:9,font,color:muted});
+  page.drawText('Project ID: '+String(currentProjectId),{x:44,y:576,size:9,font,color:muted});
+  page.drawText('Agreement record: '+String(data.id),{x:44,y:558,size:9,font,color:muted});
+  page.drawText('Customer email: '+String(purchaseUser.email||'').slice(0,70),{x:44,y:540,size:10,font,color:navy});
+  // The signature page is the last page of the document. Put the signature at the bottom.
+  page.drawLine({start:{x:44,y:198},end:{x:568,y:198},thickness:1,color:PDFLib.rgb(.78,.83,.9)});
+  const png=await pdf.embedPng(data.signature_png);
+  const dims=png.scale(Math.min(350/png.width,95/png.height,1));
+  page.drawImage(png,{x:48,y:209,width:dims.width,height:dims.height});
+  page.drawText('Customer signature', {x:44,y:177,size:10,font:bold,color:navy});
+  const date=new Date(data.signed_at);
+  if(!Number.isFinite(date.getTime()))throw new Error('Signed date is missing.');
+  const timeText=new Intl.DateTimeFormat('en-US',{year:'numeric',month:'long',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}).format(date);
+  page.drawText('Signed on: '+timeText.slice(0,92),{x:44,y:151,size:10,font,color:navy});
+  page.drawText('Signature recorded electronically for this specific website.',{x:44,y:121,size:9,font,color:muted});
+  const bytes=await pdf.save();
+  const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
+  const a=document.createElement('a');a.href=url;a.download='steady-hands-signed-agreement-'+String(currentProjectId).replace(/[^a-z0-9_-]/gi,'')+'.pdf';document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+ }finally{if(button){button.disabled=false;button.textContent=previous}}
+}
 function purchaseDraft(){return {plan:purchasePlan,checkoutSessions,updated_at:new Date().toISOString()}}
 async function savePurchaseDraft(){
- if(!purchaseUser)return false;
+ if(!purchaseUser||!purchaseProject)return false;
  purchaseSaving=true;
- const {error}=await supabase.auth.updateUser({data:{portal_purchase_draft:purchaseDraft()}});
+ const drafts={...(purchaseUser.user_metadata?.portal_project_purchase_drafts||{}),[purchaseProject.id]:purchaseDraft()};
+ const {data,error}=await supabase.auth.updateUser({data:{portal_project_purchase_drafts:drafts}});
  purchaseSaving=false;
  if(error){const el=$('#purchase-notice');if(el)el.textContent='Could not save progress: '+error.message;return false}
+ if(data?.user)purchaseUser=data.user;
  return true;
 }
 function completedCount(){return !signedAgreement?0:!(designPaid||developmentBypass)?1:!hostingPaid?2:3}
-function promoUI(purpose){return '<section class="purchase-code-box"><button type="button" class="purchase-code-toggle" data-open-code="'+purpose+'"><span>Have a code?</span><span>⌄</span></button><div class="purchase-code-fields" hidden><label>Enter your code</label><div class="purchase-code-input-row"><input type="text" autocomplete="off" spellcheck="false" placeholder="Enter your code" maxlength="80"><button type="button" class="secondary" data-apply-code="'+purpose+'">Apply</button></div><small role="status" class="purchase-code-feedback"></small></div></section>'}
+function promoUI(purpose){return '<section class="purchase-code-box"><button type="button" class="purchase-code-toggle" data-open-code="'+purpose+'"><span>Have a code?</span></button><div class="purchase-code-fields" hidden><label>Enter your code</label><div class="purchase-code-input-row"><input type="text" autocomplete="off" spellcheck="false" placeholder="Enter your code" maxlength="80"><button type="button" class="secondary" data-apply-code="'+purpose+'">Apply</button></div><small role="status" class="purchase-code-feedback"></small></div></section>'}
 async function codeStatus(){
  const {data,error}=await supabase.functions.invoke('portal-promo',{body:{action:'status'}});
  if(error||!data||data.message)throw new Error(data?.message||'Code service is not ready. Apply your server setup first.');
@@ -66,35 +135,35 @@ async function codeStatus(){
 }
 function purchaseMarkup(){
  const completed=completedCount();
- const list='<div class="journey-purchase-steps">'+purchaseSteps.map((x,i)=>'<div class="journey-purchase-stage '+(i===purchaseStep?'active':'')+' '+(i<completed?'complete':'')+'"><span class="stage-number">'+(i<completed?'✓':i+1)+'</span><span>'+x.title+'</span></div>').join('')+'</div><div class="journey-progress-caption"><span>Purchase progress</span><strong>'+completed+'/3 complete</strong></div><div class="journey-progress"><div style="width:'+(completed/3*100)+'%"></div></div>';
+ const list='<div class="journey-purchase-steps">'+purchaseSteps.map((x,i)=>'<div class="journey-purchase-stage '+(i===(showingAgreementApproval?0:purchaseStep)?'active':'')+' '+(i<completed?'complete':'')+'"><span class="stage-number">'+(i<completed?'✓':i+1)+'</span><span>'+x.title+'</span></div>').join('')+'</div><div class="journey-progress-caption"><span>Purchase progress</span><strong>'+completed+'/3 complete</strong></div><div class="journey-progress"><div style="width:'+(completed/3*100)+'%"></div></div>';
  let body='';
- if(completed===3){queueMicrotask(()=>window.dispatchEvent(new Event('steadyhands:purchase-complete')));
+ if(completed===3){queueMicrotask(()=>window.dispatchEvent(new CustomEvent('steadyhands:purchase-complete',{detail:{projectId:purchaseProject.id}})));
   body='<div class="journey-finish"><div class="journey-finish-icon">✓</div><h3>Everything is complete!</h3><p>Your agreement, website design step, and hosting checkout have been confirmed.</p><div class="journey-finish-checks"><div>✓ Agreement signed</div><div>'+(developmentBypass?'✓ Website design fee waived':'✓ Website design paid')+'</div><div>✓ Hosting confirmed</div></div><div class="journey-finish-actions"><button type="button" class="primary" id="journey-download-confirmation">↓ Download Confirmation</button><button type="button" class="secondary" id="journey-return-home">Back to Overview</button></div></div>';
- }else if(purchaseStep===0&&signedAgreement){
-  body='<div class="journey-signed"><span class="journey-signed-check">✓</span><div><h3>Agreement Signed</h3><p>Your October 9, 2026 agreement is saved. You do not need to sign again.</p></div></div><button type="button" id="journey-view-terms" class="secondary">View Terms</button>';
+ }else if(signedAgreement&&showingAgreementApproval){
+  body='<div class="journey-approval-screen"><span class="journey-approval-check" aria-hidden="true">✓</span><h3>Agreement Approved</h3><p>Your signed agreement for this website has been saved successfully.</p><p class="journey-approval-date">Signed: '+signedDateText()+'</p><button type="button" id="journey-download-signed" class="primary">↓ Download Signed PDF</button><button type="button" id="journey-signed-continue" class="secondary">Continue to Website Design →</button></div>';
  }else if(purchaseStep===0){
-  body='<h3>1. Sign Agreement</h3><p>Review the terms and sign once before paying.</p><div class="journey-info"><strong>Current agreement</strong><p>Read the <button type="button" class="journey-terms-link" id="journey-view-terms">Terms &amp; Conditions</button> effective October 9, 2026.</p></div><label class="journey-sign-label">Signature</label><canvas id="journey-sign" width="760" height="220" aria-label="Draw a signature"></canvas><button type="button" class="secondary" id="journey-clear-sign">Clear Signature</button><label class="journey-agree"><input type="checkbox" id="journey-agree"> I have read and agree to the website service agreement.</label><button class="primary" id="journey-sign-submit" type="button">Sign &amp; Continue</button>';
+  body='<h3>1. Sign Agreement</h3><p>Review and sign for this website before paying.</p><div class="journey-info"><strong>Current agreement</strong><p>Read the <button type="button" class="journey-terms-link" id="journey-view-terms">Website Services Agreement (PDF)</button> version October 14, 2026.</p></div><label class="journey-sign-label">Signature</label><canvas id="journey-sign" width="760" height="220" aria-label="Draw a signature"></canvas><button type="button" class="secondary" id="journey-clear-sign">Clear Signature</button><label class="journey-agree"><input type="checkbox" id="journey-agree"> I have read and agree to the website service agreement.</label><button class="primary" id="journey-sign-submit" type="button">Sign &amp; Continue</button>';
  }else if(purchaseStep===1){
   body='<h3>2. Website Design</h3><p>One-time website development</p><div class="journey-purchase-total"><strong>Website Design</strong><span>'+(developmentBypass?'<s>$100 once</s> <b class="code-free-label">FREE</b>':'$100 once')+'</span></div>'+promoUI('development_bypass')+(checkoutSessions.development?'<button type="button" class="secondary" id="purchase-verify">I’ve Completed Payment — Check Status</button>':'')+'<button type="button" class="primary" id="pay-website-design">'+(developmentBypass?'Next: Select Hosting':'Continue to Square Checkout')+'</button>';
  }else{
-  body='<h3>3. Select Hosting</h3><p>Select your monthly hosting plan to finish.</p>'+promoUI('local_hosting')+'<div class="journey-host-options"><label><input type="radio" name="journey-host" value="standard" '+(purchasePlan==='standard'?'checked':'')+'><span><strong>Standard Hosting</strong><small>'+(hostingDiscount?'<s>$20/month</s> $10/month':'$20/month')+'</small></span></label><label><input type="radio" name="journey-host" value="backend" '+(purchasePlan==='backend'?'checked':'')+'><span><strong>Backend Hosting</strong><small>'+(hostingDiscount?'<s>$30/month</s> $20/month':'$30/month')+'</small></span></label></div>'+(checkoutSessions.hosting?'<button type="button" class="secondary" id="purchase-verify">I’ve Completed Payment — Check Status</button>':'')+'<button id="purchase-hosting-checkout" class="primary" type="button">Continue to Hosting Checkout</button>';
+  body='<h3>3. Select Hosting</h3><p>Select your monthly hosting plan to finish.</p>'+hostingCards(purchasePlan==='backend'?'business':purchasePlan,'journey-host','backend')+promoUI('local_hosting')+(checkoutSessions.hosting?'<button type="button" class="secondary" id="purchase-verify">I’ve Completed Payment — Check Status</button>':'')+'<button id="purchase-hosting-checkout" class="primary" type="button">Continue to Hosting Checkout</button>';
  }
- return '<div class="journey-dialog-body">'+list+'<div class="journey-purchase-stage-content">'+body+'</div><p id="purchase-notice" role="status" class="journey-muted" aria-live="polite"></p></div>';
+ return '<div class="journey-dialog-body"><div class="journey-info">Website: <strong>'+String(purchaseProject?.display_name||'').replace(/[&<>"]/g,'')+'</strong></div>'+list+'<div class="journey-purchase-stage-content">'+body+'</div><p id="purchase-notice" role="status" class="journey-muted" aria-live="polite"></p></div>';
 }
 async function refreshPaymentStatus(){
  if(!purchaseUser)return;
  if(!signedAgreement)return;
  if(checkoutSessions.development&&!designPaid&&!developmentBypass){
-  try{designPaid=await verifyCustomerCheckout(checkoutSessions.development)}catch(e){console.warn('Design payment verification unavailable',e)}
+  try{designPaid=await verifyCustomerCheckout(checkoutSessions.development,{projectId:purchaseProject.id,purpose:'development'})}catch(e){console.warn('Design payment verification unavailable',e)}
  }
  if(designPaid&&checkoutSessions.hosting&&!hostingPaid){
-  try{hostingPaid=await verifyCustomerCheckout(checkoutSessions.hosting)}catch(e){console.warn('Hosting verification unavailable',e)}
+  try{hostingPaid=await verifyCustomerCheckout(checkoutSessions.hosting,{projectId:purchaseProject.id,purpose:'hosting'})}catch(e){console.warn('Hosting verification unavailable',e)}
  }
  purchaseStep=(designPaid||developmentBypass)?(hostingPaid?3:2):1;
 }
 function downloadConfirmation(){
  const clean=s=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
- const page='<!doctype html><html><head><meta charset="utf-8"><title>Steady Hands Purchase Confirmation</title><style>body{font:16px system-ui;color:#19365d;max-width:650px;margin:60px auto;padding:24px}h1{color:#165c9b}.line{padding:14px 0;border-bottom:1px solid #ddd}</style></head><body><h1>Steady Hands LLC</h1><h2>Purchase Confirmation</h2><p>Customer: '+clean(purchaseUser?.email)+'</p><div class="line">✓ Agreement signed — October 9, 2026 terms</div><div class="line">'+(developmentBypass?'✓ Website design — fee waived by code':'✓ Website design — $100 paid')+'</div><div class="line">✓ Hosting — '+clean(purchasePlan==='backend'?'Backend $30/month':'Standard $20/month')+'</div><p>Verified checkout references: '+clean(checkoutSessions.development)+' / '+clean(checkoutSessions.hosting)+'</p><p>This is a confirmation summary, not a tax invoice. Square provides the official payment receipts.</p></body></html>';
+ const page='<!doctype html><html><head><meta charset="utf-8"><title>Steady Hands Purchase Confirmation</title><style>body{font:16px system-ui;color:#19365d;max-width:650px;margin:60px auto;padding:24px}h1{color:#165c9b}.line{padding:14px 0;border-bottom:1px solid #ddd}</style></head><body><h1>Steady Hands LLC</h1><h2>Purchase Confirmation</h2><p>Customer: '+clean(purchaseUser?.email)+'</p><p>Website: '+clean(purchaseProject?.display_name)+'</p><p>Project ID: '+clean(purchaseProject?.id)+'</p><div class="line">✓ Agreement signed — website-specific terms, October 14, 2026</div><div class="line">'+(developmentBypass?'✓ Website design — fee waived by code':'✓ Website design — $100 paid')+'</div><div class="line">✓ Hosting — '+clean(purchasePlan==='backend'?'Business Hosting $30/month':'Standard Hosting $20/month')+'</div><p>Verified checkout references: '+clean(checkoutSessions.development)+' / '+clean(checkoutSessions.hosting)+'</p><p>This is a confirmation summary, not a tax invoice. Square provides the official payment receipts.</p></body></html>';
  const url=URL.createObjectURL(new Blob([page],{type:'text/html'}));const link=document.createElement('a');link.href=url;link.download='steady-hands-confirmation.html';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 function setupSignatureCanvas(){signatureDrawn=false;
@@ -112,9 +181,53 @@ function renderPurchase(){
  wrapper.querySelectorAll('[data-open-code]').forEach(b=>b.onclick=()=>{const p=b.closest('.purchase-code-box').querySelector('.purchase-code-fields');p.hidden=!p.hidden;if(!p.hidden)p.querySelector('input').focus()});
  wrapper.querySelectorAll('[data-apply-code]').forEach(b=>b.onclick=async()=>{const p=b.closest('.purchase-code-fields'),note=p.querySelector('.purchase-code-feedback'),code=p.querySelector('input').value.trim();if(!code){note.textContent='Enter your code.';return}b.disabled=true;note.textContent='Verifying code…';try{const {data,error}=await supabase.functions.invoke('portal-promo',{body:{action:'redeem',purpose:b.dataset.applyCode,code}});if(error||data?.message)throw new Error(data?.message||'Unable to validate code');if(data?.valid!==true){note.textContent='Invalid code for this step.';return}await codeStatus();if(b.dataset.applyCode==='development_bypass'&&developmentBypass)purchaseStep=2;renderPurchase();$('#purchase-notice').textContent=developmentBypass?'Development fee waived. Continue by selecting hosting.':'Code applied successfully.'}catch(e){note.textContent=e.message||'Code could not be applied.'}finally{b.disabled=false}});
  setupSignatureCanvas();
- const sign=$('#journey-sign-submit');if(sign)sign.onclick=async()=>{const agreed=$('#journey-agree')?.checked;if(!agreed){$('#purchase-notice').textContent='Please read and check the terms acknowledgment first.';return}if(!signatureDrawn){$('#purchase-notice').textContent='Please draw your signature first.';return}sign.disabled=true;$('#purchase-notice').textContent='Saving signature securely…';const {data:{user},error:authError}=await supabase.auth.getUser();if(authError||!user){$('#purchase-notice').textContent='Please sign in again.';sign.disabled=false;return}const png=$('#journey-sign').toDataURL('image/png');const {error}=await supabase.from('portal_agreement_signatures').insert({user_id:user.id,agreement_version:AGREEMENT_VERSION,agreement_title:'Steady Hands LLC — Website Services Terms & Conditions',signature_png:png,acknowledged:true});if(error){if(error.code==='23505'){signedAgreement=await loadSignedAgreement(user.id);if(signedAgreement){purchaseStep=1;renderPurchase();return}}$('#purchase-notice').textContent='Signature not saved: '+error.message;sign.disabled=false;return}signedAgreement=await loadSignedAgreement(user.id);if(!signedAgreement){$('#purchase-notice').textContent='Signature could not be confirmed. Please try again.';sign.disabled=false;return}purchaseStep=1;renderPurchase();$('#purchase-notice').textContent='Agreement saved.'};
- const continueSigned=$('#journey-signed-continue');if(continueSigned)continueSigned.onclick=()=>{purchaseStep=1;renderPurchase()};
- const terms=$('#journey-view-terms');if(terms)terms.onclick=()=>{const modal=document.createElement('div');modal.className='journey-terms-overlay';modal.innerHTML='<section class="journey-terms-box journey-terms-embedded" role="dialog" aria-modal="true" aria-label="Terms and Conditions"><div class="journey-terms-heading"><h3>Website Services — Terms &amp; Conditions</h3><a href="terms-and-conditions.html" target="_blank" rel="noopener noreferrer">Open full page ↗</a></div><iframe title="Steady Hands Terms and Conditions" src="terms-and-conditions.html"></iframe><button type="button" class="primary" id="close-terms">Close</button></section>';document.body.appendChild(modal);modal.querySelector('#close-terms').onclick=()=>modal.remove();modal.onclick=e=>{if(e.target===modal)modal.remove()}};
+ const sign=$('#journey-sign-submit');
+ if(sign)sign.onclick=async()=>{
+  const notice=$('#purchase-notice');
+  if(!$('#journey-agree')?.checked){notice.textContent='Please read and check the terms acknowledgment first.';return}
+  if(!signatureDrawn){notice.textContent='Please draw your signature first.';return}
+  const canvas=$('#journey-sign');
+  const projectAtStart=purchaseProject;
+  const originalLabel=sign.textContent;
+  const limit=(promise,ms)=>Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject(new Error('The signing request timed out. Check your connection, then try again.')),ms))]);
+  sign.disabled=true;
+  sign.textContent='Saving signature…';
+  notice.textContent='Saving signature securely…';
+  try{
+   if(!projectAtStart?.id)throw new Error('No website selected. Close and reopen the checkout.');
+   const auth=await limit(supabase.auth.getUser(),12000);
+   const user=auth?.data?.user;
+   if(auth?.error||!user)throw new Error('Please sign in again.');
+   let existing=await limit(loadSignedAgreement(user.id),12000);
+   if(!existing){
+    const png=canvas.toDataURL('image/png');
+    const response=await limit(supabase.from('portal_project_agreements').insert({
+     user_id:user.id,project_id:projectAtStart.id,agreement_version:AGREEMENT_VERSION,
+     agreement_title:'Steady Hands LLC — Website-Specific Services Agreement',
+     signature_png:png,acknowledged:true,website_name:projectAtStart.display_name
+    }),15000);
+    if(response.error && response.error.code!=='23505')throw response.error;
+    existing=await limit(loadSignedAgreement(user.id),12000);
+   }
+   if(!existing)throw new Error('Could not confirm the saved signature. Please try again.');
+   signedAgreement=existing;
+   purchaseStep=0;
+   showingAgreementApproval=true;
+   renderPurchase();
+   const nextNotice=$('#purchase-notice');
+   if(nextNotice)nextNotice.textContent='Agreement saved.';
+  }catch(error){
+   console.error('Unable to save project agreement',error);
+   const currentNotice=$('#purchase-notice');
+   if(currentNotice)currentNotice.textContent='Signature not saved: '+(error?.message||'Please try again.');
+  }finally{
+   if(sign.isConnected){sign.disabled=false;sign.textContent=originalLabel}
+  }
+ };
+
+ const signedDownload=$('#journey-download-signed');if(signedDownload)signedDownload.onclick=async()=>{try{await downloadSignedAgreement(signedDownload)}catch(e){$('#purchase-notice').textContent=e.message||'Signed PDF could not be prepared.'}};
+ const continueSigned=$('#journey-signed-continue');if(continueSigned)continueSigned.onclick=()=>{showingAgreementApproval=false;purchaseStep=1;renderPurchase()};
+ const terms=$('#journey-view-terms');if(terms)terms.onclick=()=>{const modal=document.createElement('div');modal.className='journey-terms-overlay';modal.innerHTML='<section class="journey-terms-box journey-terms-embedded" role="dialog" aria-modal="true" aria-label="Website Services Agreement PDF"><div class="journey-terms-heading"><h3>Website Services Agreement (PDF)</h3><a href="website-services-agreement.pdf" target="_blank" rel="noopener noreferrer">Open or download PDF ↗</a></div><iframe title="Steady Hands Website Services Agreement PDF" src="website-services-agreement.pdf#toolbar=1"></iframe><p><a href="website-services-agreement.pdf" target="_blank" rel="noopener noreferrer">If the preview is blank, open the PDF here.</a></p><button type="button" class="primary" id="close-terms">Close</button></section>';document.body.appendChild(modal);modal.querySelector('#close-terms').onclick=()=>modal.remove();modal.onclick=e=>{if(e.target===modal)modal.remove()}};
  const verify=$('#purchase-verify');if(verify)verify.onclick=async()=>{verify.disabled=true;$('#purchase-notice').textContent='Checking Square payment status…';await refreshPaymentStatus();renderPurchase();if(completedCount()<3)$('#purchase-notice').textContent='Square has not confirmed the payment yet. Try again after checkout.'};
  const download=$('#journey-download-confirmation');if(download)download.onclick=downloadConfirmation;
  const home=$('#journey-return-home');if(home)home.onclick=()=>{close();location.hash='overview'};
@@ -128,7 +241,7 @@ function renderPurchase(){
   const checkoutWindow=window.open('','_blank');
   if(checkoutWindow){checkoutWindow.document.title='Preparing Square Checkout';checkoutWindow.document.body.textContent='Preparing your secure Square checkout…'}
   try{
-   const {checkoutUrl,checkoutId}=await createCustomerCheckout(kind,{agreementId:signedAgreement.id});
+   const {checkoutUrl,checkoutId}=await createCustomerCheckout(kind,{agreementId:signedAgreement.id,projectId:purchaseProject.id});
    checkoutSessions[kind==='development'?'development':'hosting']=checkoutId;
    await savePurchaseDraft();
    if(checkoutWindow){checkoutWindow.opener=null;checkoutWindow.location.replace(checkoutUrl)}
@@ -144,17 +257,23 @@ function renderPurchase(){
  const hosting=$('#purchase-hosting-checkout');if(hosting)hosting.onclick=async()=>{if(!purchasePlan){noticeCheckout('Select your hosting plan first.');return}await checkout(purchasePlan,hosting)};
 
 }
-document.addEventListener('steadyhands:purchase-options',async()=>{
+document.addEventListener('steadyhands:purchase-options',async event=>{
  const {data:{user}}=await supabase.auth.getUser();if(!user)return;
- purchaseUser=user;
- const draft=user.user_metadata?.portal_purchase_draft||{};
- const preferredPlan=sessionStorage.getItem('portal_preferred_plan');sessionStorage.removeItem('portal_preferred_plan');purchasePlan=['standard','backend'].includes(preferredPlan)?preferredPlan:(['standard','backend'].includes(draft.plan)?draft.plan:null);
+ const projectId=event.detail?.projectId||sessionStorage.getItem('steadyhands.portal.checkout_project');
+ sessionStorage.removeItem('steadyhands.portal.checkout_project');
+ if(!projectId){open('<div class="journey-dialog-body"><h3>Choose a website first</h3><p>Open an Awaiting Payment website from My Websites. Each site has its own agreement and payments.</p></div>','Website Checkout');return}
+ const {data:project,error:projectError}=await supabase.from('portal_website_projects').select('id,user_id,display_name,status,details').eq('id',projectId).eq('user_id',user.id).maybeSingle();
+ if(projectError||!project||project.status!=='awaiting_payment'){open('<div class="journey-dialog-body"><p>This website is not available for payment.</p></div>','Website Checkout');return}
+ purchaseProject=project;purchaseUser=user;
+ const draft=user.user_metadata?.portal_project_purchase_drafts?.[project.id]||{};
+ const preferredPlan=sessionStorage.getItem('portal_preferred_plan');sessionStorage.removeItem('portal_preferred_plan');
+ const projectPlan=project.details?.hosting_plan==='business'?'backend':'standard';
+ purchasePlan=['standard','backend'].includes(draft.plan)?draft.plan:(['standard','backend'].includes(preferredPlan)?preferredPlan:projectPlan);
  checkoutSessions=draft.checkoutSessions||{};
  designPaid=false;hostingPaid=false;developmentBypass=false;hostingDiscount=false;
- // Progress is not considered paid or signed based solely on user-editable metadata.
- try{signedAgreement=await loadSignedAgreement(user.id)}catch(e){open('<p class="journey-info">Unable to load your agreement status: '+String(e.message||e).replace(/[<>]/g,'')+'</p>','Agreement Status');return}
+ try{signedAgreement=await loadSignedAgreement(user.id)}catch(e){open('<p class="journey-info">Unable to load project agreement. Run PROJECT_PURCHASE_SETUP.sql first. '+String(e.message||e).replace(/[<>]/g,'')+'</p>','Agreement Status');return}
  purchaseStep=signedAgreement?1:0;
- try{await codeStatus()}catch(e){console.warn(e.message)}
+ // Discount redemption must also be made project-specific on the server. Do not apply account-wide promo flags.
  await refreshPaymentStatus();
  renderPurchase();
 });
