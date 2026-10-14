@@ -67,117 +67,36 @@ function loadPdfLib(){
  }).catch(err=>{pdfLibLoading=null;throw err});
  return pdfLibLoading;
 }
-let pdfJsLoading=null;
-function loadPdfJs(){
- if(window.pdfjsLib)return Promise.resolve(window.pdfjsLib);
- if(pdfJsLoading)return pdfJsLoading;
- pdfJsLoading=new Promise((resolve,reject)=>{
-  const script=document.createElement('script');
-  script.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-  script.onload=()=>{
-   if(!window.pdfjsLib){reject(new Error('Agreement PDF renderer could not be initialized.'));return}
-   // Disable separate worker loading; the same library handles local and hosted use.
-   window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-   resolve(window.pdfjsLib);
-  };
-  script.onerror=()=>reject(new Error('Agreement PDF renderer could not load. Check your internet connection.'));
-  document.head.appendChild(script);
- }).catch(error=>{pdfJsLoading=null;throw error});
- return pdfJsLoading;
-}
-async function renderAgreementToFreshPdf(original,PDFLib){
- const pdfjs=await loadPdfJs();
- const task=pdfjs.getDocument({data:new Uint8Array(original),disableAutoFetch:true,disableStream:true});
- const source=await task.promise;
- if(!source.numPages)throw new Error('The agreement PDF contains no pages.');
- const pdf=await PDFLib.PDFDocument.create();
- pdf.setTitle('Steady Hands — Signed Website Services Agreement');
- pdf.setSubject('Website-specific signed agreement');
- pdf.setCreator('Steady Hands Client Portal');
- try{
-  for(let i=1;i<=source.numPages;i++){
-   const sourcePage=await source.getPage(i);
-   const originalViewport=sourcePage.getViewport({scale:1});
-   const scale=Math.min(2,2400/Math.max(originalViewport.width,originalViewport.height));
-   const viewport=sourcePage.getViewport({scale});
-   const canvas=document.createElement('canvas');
-   canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
-   const ctx=canvas.getContext('2d',{alpha:false});
-   if(!ctx)throw new Error('Could not prepare the PDF page image.');
-   ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);
-   await sourcePage.render({canvasContext:ctx,viewport,background:'white'}).promise;
-   const jpgData=canvas.toDataURL('image/jpeg',.94);
-   const image=await pdf.embedJpg(jpgData);
-   const page=pdf.addPage([originalViewport.width,originalViewport.height]);
-   page.drawImage(image,{x:0,y:0,width:originalViewport.width,height:originalViewport.height});
-   canvas.width=0;canvas.height=0;
-   sourcePage.cleanup();
-  }
- }finally{await task.destroy()}
- return pdf;
-}
 function signedDateText(){
  const d=new Date(signedAgreement?.signed_at);
  return Number.isFinite(d.getTime())?new Intl.DateTimeFormat('en-US',{year:'numeric',month:'long',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}).format(d):'Date not available';
 }
 async function downloadSignedAgreement(button){
- if(!purchaseProject?.id||!signedAgreement?.id)throw new Error('No signed website agreement was found.');
- const currentProjectId=purchaseProject.id, currentAgreementId=signedAgreement.id;
- const {data,error}=await supabase.from('portal_project_agreements').select('id,user_id,project_id,agreement_version,website_name,signature_png,signed_at').eq('id',currentAgreementId).eq('project_id',currentProjectId).eq('user_id',purchaseUser.id).eq('acknowledged',true).single();
- if(error||!data?.signature_png)throw new Error(error?.message||'The saved signature could not be loaded.');
- if(data.agreement_version!==AGREEMENT_VERSION)throw new Error('This agreement uses an older version; please contact support for the correct document.');
- const previous=button?.textContent;if(button){button.disabled=true;button.textContent='Preparing signed PDF…'}
+ if(!purchaseProject?.id || !signedAgreement?.id)throw new Error('No signed website agreement was found.');
+ const currentProjectId=purchaseProject.id;
+ const prior=button?.textContent;
+ if(button){button.disabled=true;button.textContent='Preparing signed PDF…'}
  try{
-  const [PDFLib,response]=await Promise.all([loadPdfLib(),fetch(AGREEMENT_PDF)]);
-  if(!response.ok)throw new Error('Could not load the agreement PDF.');
-  const original=await response.arrayBuffer();
-  // Render each agreement page into a NEW document: never reuse PDF object
-  // references from the source file, which macOS Preview may reject.
-  const pdf=await renderAgreementToFreshPdf(original,PDFLib);
-  const page=pdf.addPage([612,792]);
-  const font=await pdf.embedFont(PDFLib.StandardFonts.Helvetica);
-  const bold=await pdf.embedFont(PDFLib.StandardFonts.HelveticaBold);
-  const navy=PDFLib.rgb(.08,.19,.35),muted=PDFLib.rgb(.35,.44,.55);
-  page.drawRectangle({x:0,y:742,width:612,height:50,color:navy});
-  page.drawText('STEADY HANDS OPERATIONS', {x:44,y:762,size:15,font:bold,color:PDFLib.rgb(1,1,1)});
-  page.drawText('SIGNED WEBSITE SERVICES AGREEMENT', {x:44,y:686,size:17,font:bold,color:navy});
-  page.drawText('The signature below applies to the attached agreement for the website:', {x:44,y:648,size:10,font,color:muted});
-  const website=String(data.website_name||purchaseProject.display_name||'Website');
-  page.drawText(website.slice(0,80),{x:44,y:625,size:13,font:bold,color:navy});
-  page.drawText('Agreement version: '+String(data.agreement_version),{x:44,y:594,size:9,font,color:muted});
-  page.drawText('Project ID: '+String(currentProjectId),{x:44,y:576,size:9,font,color:muted});
-  page.drawText('Agreement record: '+String(data.id),{x:44,y:558,size:9,font,color:muted});
-  page.drawText('Customer email: '+String(purchaseUser.email||'').slice(0,70),{x:44,y:540,size:10,font,color:navy});
-  // The signature page is the last page of the document. Put the signature at the bottom.
-  page.drawLine({start:{x:44,y:198},end:{x:568,y:198},thickness:1,color:PDFLib.rgb(.78,.83,.9)});
-  const png=await pdf.embedPng(data.signature_png);
-  const dims=png.scale(Math.min(350/png.width,95/png.height,1));
-  page.drawImage(png,{x:48,y:209,width:dims.width,height:dims.height});
-  page.drawText('Customer signature', {x:44,y:177,size:10,font:bold,color:navy});
-  const date=new Date(data.signed_at);
-  if(!Number.isFinite(date.getTime()))throw new Error('Signed date is missing.');
-  const timeText=new Intl.DateTimeFormat('en-US',{year:'numeric',month:'long',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}).format(date);
-  page.drawText('Signed on: '+timeText.slice(0,92),{x:44,y:151,size:10,font,color:navy});
-  page.drawText('Signature recorded electronically for this specific website.',{x:44,y:121,size:9,font,color:muted});
-  // Safari's PDF viewer is more reliable with conventional, non-object-stream PDFs.
-  const bytes=await pdf.save({useObjectStreams:false});
-  const raw=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength);
-  const prefix=new TextDecoder('ascii').decode(bytes.subarray(0,8));
-  const suffix=new TextDecoder('ascii').decode(bytes.subarray(Math.max(0,bytes.length-512)));
-  if(!prefix.startsWith('%PDF-')||!suffix.includes('%%EOF')||bytes.length<1000)
-   throw new Error('Generated PDF is incomplete. Please retry.');
-  const checked=await PDFLib.PDFDocument.load(raw);
-  if(checked.getPageCount()<2)throw new Error('Generated PDF failed page verification.');
-  const blob=new Blob([bytes],{type:'application/pdf'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;
-  a.download='steady-hands-signed-agreement-'+String(currentProjectId).replace(/[^a-z0-9_-]/gi,'')+'.pdf';
-  document.body.appendChild(a);a.click();a.remove();
-  // Keep the temporary URL alive long enough for Safari to finish downloading.
+  const {data,error}=await supabase.functions.invoke('signed-project-agreement',{
+   body:{projectId:currentProjectId,agreementId:signedAgreement.id}
+  });
+  if(error){
+   let message=error.message||'Could not generate the signed PDF.';
+   try{const response=error.context;if(response?.json){const details=await response.json();message=details.error||details.message||message}}catch{}
+   throw new Error(message+' Check that the signed-project-agreement Supabase function is deployed.');
+  }
+  const blob=data instanceof Blob?data:new Blob([data],{type:'application/pdf'});
+  const bytes=new Uint8Array(await blob.slice(0,8).arrayBuffer());
+  if(blob.size<1000 || new TextDecoder().decode(bytes).indexOf('%PDF-')!==0)
+   throw new Error('Server returned an invalid PDF. Please contact support.');
+  const url=URL.createObjectURL(new Blob([blob],{type:'application/pdf'}));
+  const anchor=document.createElement('a');
+  anchor.href=url;anchor.download='steady-hands-signed-agreement-'+currentProjectId+'.pdf';
+  document.body.appendChild(anchor);anchor.click();anchor.remove();
   setTimeout(()=>URL.revokeObjectURL(url),300000);
- }finally{if(button){button.disabled=false;button.textContent=previous}}
+ }finally{if(button){button.disabled=false;button.textContent=prior}}
 }
+
 function purchaseDraft(){return {plan:purchasePlan,checkoutSessions,updated_at:new Date().toISOString()}}
 async function savePurchaseDraft(){
  if(!purchaseUser||!purchaseProject)return false;

@@ -1,0 +1,12 @@
+SERVER-SIDE SIGNED AGREEMENT PDF — DEPLOYMENT
+
+1. Keep website-services-agreement.pdf in your website root.
+2. Replace your site's journey.js with the included version.
+3. Deploy the function: supabase functions deploy signed-project-agreement
+   (run from a local folder containing supabase/functions/signed-project-agreement/index.ts).
+4. Confirm your Supabase project's SUPABASE_URL and SUPABASE_ANON_KEY environment variables are provided to Edge Functions (Supabase normally provides these automatically).
+5. If your agreement lives at a different public HTTPS address, set AGREEMENT_PDF_URL as a Supabase function secret.
+6. Test Download Signed PDF while signed in. Existing signatures in portal_project_agreements are reused.
+
+This change does NOT require SQL or re-signing. It does require a Supabase Edge Function deployment.
+If the function isn't deployed, downloading will produce a useful error rather than a corrupt PDF.
