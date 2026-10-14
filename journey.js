@@ -82,7 +82,17 @@ async function downloadSignedAgreement(button){
   const [PDFLib,response]=await Promise.all([loadPdfLib(),fetch(AGREEMENT_PDF)]);
   if(!response.ok)throw new Error('Could not load the agreement PDF.');
   const original=await response.arrayBuffer();
-  const pdf=await PDFLib.PDFDocument.load(original);
+  // Rebuild the signed file from a fresh PDF rather than mutating the source PDF.
+  // This avoids carrying potentially incompatible cross-reference and object data
+  // into the file downloaded by Safari / macOS Preview.
+  const source=await PDFLib.PDFDocument.load(original,{updateMetadata:false});
+  if(source.getPageCount()<1)throw new Error('The source agreement has no pages.');
+  const pdf=await PDFLib.PDFDocument.create();
+  const copied=await pdf.copyPages(source,source.getPageIndices());
+  copied.forEach(p=>pdf.addPage(p));
+  pdf.setTitle('Steady Hands — Signed Website Services Agreement');
+  pdf.setSubject('Website-specific signed agreement');
+  pdf.setCreator('Steady Hands Client Portal');
   const page=pdf.addPage([612,792]);
   const font=await pdf.embedFont(PDFLib.StandardFonts.Helvetica);
   const bold=await pdf.embedFont(PDFLib.StandardFonts.HelveticaBold);
@@ -109,11 +119,18 @@ async function downloadSignedAgreement(button){
   page.drawText('Signed on: '+timeText.slice(0,92),{x:44,y:151,size:10,font,color:navy});
   page.drawText('Signature recorded electronically for this specific website.',{x:44,y:121,size:9,font,color:muted});
   // Safari's PDF viewer is more reliable with conventional, non-object-stream PDFs.
-  const bytes=await pdf.save({useObjectStreams:false,addDefaultPage:false});
+  const bytes=await pdf.save({useObjectStreams:false});
   const raw=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength);
-  const prefix=new TextDecoder('ascii').decode(new Uint8Array(raw,0,Math.min(raw.byteLength,8)));
-  if(!prefix.startsWith('%PDF-')||raw.byteLength<1000)throw new Error('The generated PDF is invalid. Please try again.');
-  const blob=new Blob([raw],{type:'application/pdf'});
+  const header=new TextDecoder('ascii').decode(bytes.subarray(0,8));
+  const tail=new TextDecoder('ascii').decode(bytes.subarray(Math.max(0,bytes.length-1024)));
+  if(!header.startsWith('%PDF-')||!tail.includes('%%EOF')||bytes.length<1000)
+   throw new Error('The generated PDF is incomplete. Please retry.');
+  // Parse the written bytes, not just the in-memory document. This catches
+  // malformed downloads before Safari saves a file that Preview cannot open.
+  const verified=await PDFLib.PDFDocument.load(raw,{updateMetadata:false});
+  if(verified.getPageCount()!==source.getPageCount()+1)
+   throw new Error('PDF page verification failed. Please retry.');
+  const blob=new Blob([bytes],{type:'application/pdf'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;
