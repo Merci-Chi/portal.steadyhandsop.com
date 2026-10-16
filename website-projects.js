@@ -1,3 +1,4 @@
+import {getSitePreviews} from './site-preview-catalog.js?v=20261016-sites-catalog';
 // Client-owned website projects. Requires sql/website-projects.sql to be applied first.
 let api=null, viewer=null, refreshView=()=>{}, projects=[], selected=null, step=0, errorText='', beforeProjectClose=null, availablePreviews=()=>[];
 const activeWizardKey='steadyhands.website.setup.active';
@@ -50,7 +51,7 @@ export function websiteProjectsMarkup(){
  if(!projects.length)return '<div class="home-empty"><span class="home-empty-icon">'+icon('panel-top')+'</span><h3>No websites yet</h3><p>Create a site from questions, or approve a preview you already have. Agreement, design payment, and hosting are separate steps.</p><button class="primary" data-project-add>Create a Website</button><button class="secondary" data-project-add data-start-preview>Ready to Approve a Preview</button></div>';
  return '<div class="project-list">'+projects.map(p=>{const archived=p.details?.__archived===true,active=['draft','awaiting_payment'].includes(p.status),id=esc(p.id);return '<article class="project-card'+(archived?' project-archived':'')+'"><div class="project-card-body"><div class="project-top"><span class="project-icon">'+icon('globe')+'</span><div class="project-name"><h3>'+esc(p.display_name)+'</h3><span class="project-badge">'+(archived?'Archived':esc(status(p)))+'</span></div><button type="button" class="secondary project-small" data-project-rename="'+id+'">Rename</button></div>'+(active?projectSteps(p):'<p>Follow the progress of your website.</p><button type="button" class="primary" data-project-view="'+id+'">View Project</button>')+'<div class="project-actions">'+(p.preview_code?'<span class="project-linked">'+icon('link')+' Preview linked</span>':'')+'<button type="button" class="secondary project-archive-button" data-project-archive="'+id+'">Archive</button></div></div>'+(archived?'<div class="project-archive-shade" aria-hidden="true"></div><div class="project-archive-action"><span>'+icon('archive')+' Archived</span><button type="button" class="primary" data-project-unarchive="'+id+'">'+icon('archive-restore')+' Unarchive</button></div>':'')+'</article>'}).join('')+'</div>';
 }
-function dialog(html){beforeProjectClose=null;let d=document.querySelector('#website-project-dialog');if(!d){d=document.createElement('dialog');d.id='website-project-dialog';d.className='website-project-dialog';document.body.append(d);d.addEventListener('click',e=>{if(e.target===d)close()});d.addEventListener('cancel',e=>{if(beforeProjectClose){e.preventDefault();close()}});}d.innerHTML=html;d.showModal();redrawIcons();return d}
+function dialog(html){beforeProjectClose=null;let d=document.querySelector('#website-project-dialog');if(!d){d=document.createElement('dialog');d.id='website-project-dialog';d.className='website-project-dialog';document.body.append(d);d.addEventListener('click',e=>{if(e.target===d)close()});d.addEventListener('cancel',e=>{if(beforeProjectClose){e.preventDefault();close()}});}d.previewRequest=null;d.innerHTML=html;d.showModal();redrawIcons();return d}
 function close(){if(beforeProjectClose)return beforeProjectClose();forgetWizard();document.querySelector('#website-project-dialog')?.close()}
 function notify(text){const el=document.querySelector('#project-message');if(el)el.textContent=text;else alert(text)}
 function addDialog(force=false,startPreview=false){
@@ -67,10 +68,14 @@ function intro(id){
  const d=dialog('<div class="project-modal"><header><div><span class="home-kicker">MAKE A SITE</span><h2>How would you like to start?</h2></div><button type="button" class="project-close" data-project-close aria-label="Close">×</button></header><p>Create a site from questions, or approve a preview you already have. Your agreement, website design payment, and hosting each have their own card.</p><div class="project-step-grid"><section class="project-step-card"><h4>Create a Site from Questions</h4><p>Tell us about your business, services, and preferred style. Save and return anytime.</p><button type="button" class="primary" id="project-intro-next">Start Questions</button></section><section class="project-step-card"><h4>Ready to Approve a Preview</h4><p>Review and approve your existing preview without completing the questionnaire.</p><button type="button" class="primary" data-project-approve="'+esc(id)+'">Review My Preview</button></section></div><button type="button" class="secondary" data-project-close>Return to Website Cards</button></div>');
  d.querySelector('#project-intro-next').onclick=()=>openWizard(id);
 }
+async function projectPreviewChoices(){
+ const entries=[...availablePreviews(),...await getSitePreviews()];
+ return [...new Map(entries.filter(v=>/^https:\/\//i.test(String(v.preview_url||''))).map(v=>[String(v.site_key).toUpperCase(),v])).values()].sort((a,b)=>String(a.site_title||a.site_key).localeCompare(String(b.site_title||b.site_key)));
+}
 async function resolveProjectPreview(code){
  const key=String(code||'').trim().toUpperCase();
  if(!key)throw new Error('Choose a preview or enter its code.');
- let found=availablePreviews().find(p=>String(p.site_key).toUpperCase()===key);
+ let found=(await projectPreviewChoices()).find(p=>String(p.site_key).toUpperCase()===key);
  if(!found){
   const claim=await api.rpc('claim_portal_preview',{p_code:key});
   if(claim.error)throw new Error('Could not link this preview: '+claim.error.message);
@@ -83,10 +88,13 @@ async function resolveProjectPreview(code){
  if(!found||!/^https:\/\//i.test(String(found.preview_url||'')))throw new Error('This preview is not available to your account. Check the code or contact support.');
  return found;
 }
-function approveProjectPreview(id){
+async function approveProjectPreview(id){
  const p=getProject(id);if(!p)return;
- const choices=availablePreviews().filter(v=>/^https:\/\//i.test(String(v.preview_url||'')));
- const d=dialog('<form class="project-modal" id="project-approve-form"><header><div><span class="home-kicker">WEBSITE DESIGN</span><h2>Ready to approve your preview?</h2></div><button type="button" class="project-close" data-project-close aria-label="Close">×</button></header><p>Choose a preview linked to your account, or enter your preview code. No questionnaire is required.</p>'+(choices.length?'<label>Your previews<select name="assigned"><option value="">Choose a preview</option>'+choices.map(v=>'<option value="'+esc(v.site_key)+'" '+(p.preview_code===v.site_key?'selected':'')+'>'+esc(v.site_title||v.site_key)+'</option>').join('')+'</select></label>':'')+'<label>Preview code<input name="code" maxlength="100" value="'+esc(p.preview_code||'')+'" placeholder="Enter your preview code"></label><button type="submit" class="secondary">Review Preview</button><div id="project-preview-review"></div><p id="project-message" role="status" aria-live="polite"></p></form>');
+ const loading=dialog('<div class="project-modal"><header><h2>Available Website Previews</h2><button type="button" class="project-close" data-project-close aria-label="Close">×</button></header><p role="status">Loading previews from our Sites collection…</p></div>');
+ const token={};loading.previewRequest=token;
+ const choices=await projectPreviewChoices();
+ if(!loading.open||loading.previewRequest!==token)return;
+ const d=dialog('<form class="project-modal" id="project-approve-form"><header><div><span class="home-kicker">WEBSITE DESIGN</span><h2>Ready to approve your preview?</h2></div><button type="button" class="project-close" data-project-close aria-label="Close">×</button></header><p>Choose any preview from our Sites collection, or a preview linked to your account. No questionnaire is required.</p>'+(choices.length?'<label>Available Previews<select name="assigned"><option value="">Choose a preview</option>'+choices.map(v=>'<option value="'+esc(v.site_key)+'" '+(p.preview_code===v.site_key?'selected':'')+'>'+esc(v.site_title||v.site_key)+'</option>').join('')+'</select></label>':'')+'<label>Preview code<input name="code" maxlength="100" value="'+esc(p.preview_code||'')+'" placeholder="Enter your preview code"></label><button type="submit" class="secondary">Review Preview</button><div id="project-preview-review"></div><p id="project-message" role="status" aria-live="polite"></p></form>');
  const form=d.querySelector('form');form.elements.assigned?.addEventListener('change',()=>{form.elements.code.value=form.elements.assigned.value;d.querySelector('#project-preview-review').innerHTML=''});
  form.elements.code.addEventListener('input',()=>d.querySelector('#project-preview-review').innerHTML='');
  form.onsubmit=async e=>{
