@@ -38,13 +38,18 @@ const icon=n=>'<i data-lucide="'+n+'" aria-hidden="true"></i>';
 function redrawIcons(){window.lucide?.createIcons?.()}
 function status(p){return ({draft:'Getting Started',awaiting_payment:'Awaiting Payment',in_development:'In Development',ready_for_review:'Ready for Review',ready_to_launch:'Ready to Launch',live:'Live'})[p.status]||'Website Project'}
 function complete(p){return required.length-missingRequired(p.details).length}
+function projectHasStarted(p){
+ if(p.status!=='draft'||p.preview_code||p.details?.__design_source||p.details?.__design_approved_at||Number.isInteger(p.details?.__setup_step))return true;
+ // Preserve progress in older drafts that predate the explicit source marker.
+ return fields.flatMap(section=>section.items).some(([key])=>key!=='hosting_plan'&&hasValue(p.details?.[key]));
+}
 function projectSteps(p){
  const id=esc(p.id),approved=!!p.details?.__design_approved_at;
- return '<div class="project-step-grid">'+
- '<section class="project-step-card"><span class="home-kicker">01 · MAKE A SITE</span><h4>How would you like to start?</h4><p>Create a site from questions, or approve a preview you already have.</p><div class="project-step-actions"><button type="button" class="secondary" data-project-edit="'+id+'">Create a Site from Questions</button><button type="button" class="primary" data-project-approve="'+id+'">'+(approved?'View Approved Preview':'Ready to Approve a Preview')+'</button></div></section>'+
- '<section class="project-step-card"><span class="home-kicker">02 · AGREEMENT</span><h4>Your website agreement</h4><p>Review, sign, or download the agreement for this website. You can sign before finishing the questionnaire.</p><button type="button" class="secondary" data-project-purchase-step="agreement" data-project-id="'+id+'">Review Agreement</button></section>'+
- '<section class="project-step-card"><span class="home-kicker">03 · WEBSITE DESIGN</span><h4>'+(approved?'Preview approved':'Website design')+'</h4><p>'+(approved?'Your preview approval is saved.':'Complete your brief or approve an existing preview. No questionnaire is required for preview approval.')+' Website development is $100 once, separate from hosting.</p><div class="project-step-actions"><button type="button" class="secondary" data-project-approve="'+id+'">'+(approved?'View Approved Preview':'Review & Approve Preview')+'</button><button type="button" class="primary" data-project-purchase-step="design" data-project-id="'+id+'">Website Design Payment</button></div></section>'+
- '<section class="project-step-card"><span class="home-kicker">04 · HOSTING</span><h4>Choose your hosting</h4><p>Standard Hosting is $20/month. Business Hosting is $30/month. Agreement and design payment are checked before checkout.</p><button type="button" class="secondary" data-project-purchase-step="hosting" data-project-id="'+id+'">Review Hosting</button></section></div>';
+ if(!projectHasStarted(p))return '<section class="project-step-card project-start-card"><span class="home-kicker">MAKE A SITE</span><h4>How would you like to start?</h4><p>Create a site from questions, or approve a preview you already have.</p><div class="project-step-actions"><button type="button" class="secondary" data-project-edit="'+id+'">Create a Site from Questions</button><button type="button" class="primary" data-project-approve="'+id+'">Ready to Approve a Preview</button></div></section>';
+ return '<div class="project-step-grid project-purchase-grid">'+
+ '<section class="project-step-card"><span class="home-kicker">01 · AGREEMENT</span><h4>Agreement</h4><p>Review, sign, or download the agreement for this website.</p><button type="button" class="secondary" data-project-purchase-step="agreement" data-project-id="'+id+'">Review Agreement</button></section>'+
+ '<section class="project-step-card"><span class="home-kicker">02 · DEVELOPMENT</span><h4>Development</h4><p>'+(approved?'Your preview approval is saved.':'Continue your website details or approve an existing preview.')+' Website development is $100 once, separate from hosting.</p><div class="project-step-actions">'+(!approved?'<button type="button" class="secondary" data-project-edit="'+id+'">'+(p.status==='draft'?'Continue Site Questions':'Edit Website Details')+'</button>':'')+'<button type="button" class="secondary" data-project-approve="'+id+'">'+(approved?'View Approved Preview':'Review & Approve Preview')+'</button><button type="button" class="primary" data-project-purchase-step="design" data-project-id="'+id+'">Development Payment</button></div></section>'+
+ '<section class="project-step-card"><span class="home-kicker">03 · HOSTING</span><h4>Hosting</h4><p>Standard Hosting is $20/month. Business Hosting is $30/month. Agreement and development payment are checked before checkout.</p><button type="button" class="secondary" data-project-purchase-step="hosting" data-project-id="'+id+'">Review Hosting</button></section></div>';
 }
 export function websiteProjectsMarkup(){
  if(errorText)return '<div class="project-notice">Website projects are not available yet. Contact support for help. <small>'+esc(errorText)+'</small></div>';
@@ -391,8 +396,8 @@ function launchProjectPayment(p,purchaseStage=null){
  close();
  document.dispatchEvent(new CustomEvent('steadyhands:purchase-options',{detail:{projectId:p.id,stage:purchaseStage}}));
 }
-function openProject(id){const p=getProject(id);if(!p||p.details?.__archived)return;if(['draft','awaiting_payment'].includes(p.status))intro(id);else view(id)}
-function openWizard(id){const p=getProject(id);if(!p||p.details?.__archived)return;selected=id;step=p.status==='draft'?resumeStep(p):0;wizard()}
+function openProject(id){const p=getProject(id);if(!p||p.details?.__archived)return;if(!['draft','awaiting_payment'].includes(p.status)){view(id);return}if(!projectHasStarted(p)){intro(id);return}close();location.hash='website';refreshView()}
+async function openWizard(id){const p=getProject(id);if(!p||p.details?.__archived)return;if(!projectHasStarted(p)){const saved=await save(p,{...p.details,__design_source:'questionnaire'});if(!saved)return;refreshView()}selected=id;step=p.status==='draft'?resumeStep(p):0;wizard()}
 function wizard(){
  const p=getProject(selected);if(!p)return;
  rememberWizard(p.id,step);

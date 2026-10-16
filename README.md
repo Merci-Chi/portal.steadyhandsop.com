@@ -32,3 +32,7 @@ No new SQL migration or Edge Function deployment is required by this change. It 
 ## Public Sites preview catalog
 
 The approval selector includes every website folder containing `sites/<folder>/index.html` (or `index.htm`) in the public `Merci-Chi/Steadyhandsop` repository, plus previews already assigned to the signed-in client. A plain file such as `sites/test` is not treated as a website. New website folders appear automatically after a refresh; the catalog is cached per browser tab for five minutes. Current published previews remain available during a temporary catalog outage. This uses public repository reads and requires no SQL migration, GitHub token, or database permission changes.
+
+## Three-step website layout
+
+An untouched draft shows only the start card. Starting the questionnaire saves `details.__design_source = "questionnaire"`; an existing questionnaire progress marker, entered brief fields, linked preview, approved preview, or submitted project also counts as started. Started projects replace the start card with Agreement, Development, and Hosting in one desktop row (stacked at 760px and below). Partially completed briefs can be resumed from Development. This reuses existing JSON fields and requires no SQL migration or data backfill.
