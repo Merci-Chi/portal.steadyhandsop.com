@@ -537,3 +537,17 @@ body .layout{height:calc(100dvh - var(--app-header-height) - var(--translate-ban
 .project-repeatable-row .project-repeatable-remove[hidden]{display:none!important}
 .project-repeatable-links>.project-repeatable-add{align-self:flex-start;width:auto!important;margin:3px 0 0!important;min-height:40px;padding:9px 16px!important}
 @media(max-width:450px){.project-repeatable-row{gap:7px!important}.project-repeatable-row .project-repeatable-remove{flex-basis:38px;width:38px!important}}
+
+/* Independent website setup, agreement, design and hosting cards. */
+.project-step-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:20px}
+.project-step-card{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:12px;border:1px solid #d9e7f7;border-radius:14px;padding:20px;background:#f8fbff}
+.project-step-card h4{font-size:19px;line-height:1.3;color:#12335f;margin:0}
+.project-step-card p{font-size:14px;line-height:1.6;color:#536d8b;margin:0}
+.project-step-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:auto;padding-top:4px}
+.project-step-card>button:last-child{margin-top:auto}
+.project-step-card button,.project-step-card a{white-space:normal;text-align:center}
+.project-modal .project-step-grid{margin-top:0}
+.project-modal select{width:100%;font:inherit;padding:12px;border:1px solid #cbdcef;border-radius:10px;background:white;color:#16375f}
+.project-modal .project-approval-check{display:flex;align-items:flex-start;gap:10px;line-height:1.5;margin-top:8px}
+.project-approval-check input[type=checkbox]{width:18px;height:18px;flex-shrink:0;margin-top:2px}
+@media(max-width:760px){.project-step-grid{grid-template-columns:1fr}.project-step-card{padding:17px}.project-step-actions{width:100%}.project-step-actions button{flex:1 1 190px}}

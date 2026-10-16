@@ -22,3 +22,9 @@ This repo hosts `https://portal.steadyhandsop.com` and uses Supabase project `gl
 **Remember email:** Stores only the email address on this device when the user opts in; never the password.
 
 **One-time link:** Existing accounts only (`shouldCreateUser:false`) and subject to Supabase Auth email limits and configured SMTP.
+
+## Separate website setup cards (October 16, 2026)
+
+Each draft or awaiting-payment website has separate Make a Site, Agreement, Website Design, and Hosting cards. Clients can complete the existing questionnaire or review and approve an assigned/claimed preview without answering the questionnaire. Approval requires an explicit acknowledgment after reviewing the selected preview. It saves the preview code and design approval in the project's existing `details` JSON and moves draft projects to `awaiting_payment`. Agreement signatures and Square payment verification remain separate.
+
+No new SQL migration or Edge Function deployment is required by this change. It reuses `portal_website_projects` (`details`, `preview_code`, `status`, `submitted_at`), existing preview reads/claims, and `portal_project_agreements`. The existing database setup, RLS policies and Square checkout backend must already be configured. Preview approval is a design decision, never payment verification. Hosting checkout still checks the signed agreement and verified development payment.
