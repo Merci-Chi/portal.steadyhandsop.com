@@ -574,3 +574,7 @@ body .layout{height:calc(100dvh - var(--app-header-height) - var(--translate-ban
 .project-contact-actions a:focus-visible,.project-subaction:focus-visible{outline:2px solid #1769b6;outline-offset:3px}
 .project-modal small{color:#60758e;line-height:1.5}
 @media(max-width:760px){.project-name-line{align-items:flex-start;gap:10px}.project-specialist-button{width:100%}.project-contact-actions a{flex:1}}
+
+/* Pending steps are blue; completed review actions retain the light treatment. */
+.project-step-card:not(.is-complete) .project-step-action{background:#0866c2!important;color:#fff!important;border-color:#0866c2!important}
+.project-step-card:not(.is-complete) .project-step-action:hover{background:#0757a5!important;border-color:#0757a5!important}
