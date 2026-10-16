@@ -557,3 +557,20 @@ body .layout{height:calc(100dvh - var(--app-header-height) - var(--translate-ban
 .project-purchase-grid .project-step-actions{width:100%}
 .project-purchase-grid .project-step-actions button{width:100%}
 @media(max-width:760px){.project-purchase-grid{grid-template-columns:minmax(0,1fr)}}
+
+/* Uniform card actions and completed states. */
+.project-purchase-grid .project-step-actions{margin-top:auto;padding-top:12px;width:100%}
+.project-step-action{display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:100%;min-height:44px;padding:12px 15px!important;border-radius:10px!important;font-size:13px!important;font-weight:750!important;background:#e8f2ff!important;color:#145a9d!important;border:1px solid #d5e5f7!important}
+.project-step-card.is-complete{background:#f3f7fc;border-color:#dce7f2}
+.project-step-tools{display:flex;flex-wrap:wrap;gap:8px}
+.project-subaction{border:0;background:transparent;color:#426b96;font:inherit;font-size:12px;padding:2px 0;text-decoration:underline;cursor:pointer;text-align:left}
+.project-name-line{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+.project-name-line h3{margin:0}
+.project-specialist-button{font-size:12px!important;padding:9px 12px!important}
+.project-contact-tabs,.project-contact-actions{display:flex;flex-wrap:wrap;gap:10px}
+.project-contact-tabs [aria-pressed=true]{border:1px solid #83acd4}
+#specialist-contact-fields{display:grid;gap:12px}
+.project-contact-actions a{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;padding:12px 18px;border-radius:10px}
+.project-contact-actions a:focus-visible,.project-subaction:focus-visible{outline:2px solid #1769b6;outline-offset:3px}
+.project-modal small{color:#60758e;line-height:1.5}
+@media(max-width:760px){.project-name-line{align-items:flex-start;gap:10px}.project-specialist-button{width:100%}.project-contact-actions a{flex:1}}

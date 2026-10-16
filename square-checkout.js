@@ -28,12 +28,15 @@ export async function createCustomerCheckout(kind,{agreementId,projectId}={}){
   if(url.protocol!=='https:'||!/(^|\.)squareup\.com$/.test(url.hostname)&&!/(^|\.)square\.link$/.test(url.hostname))throw new Error('Square returned an unexpected checkout address.');
   return {checkoutUrl:url.href,checkoutId:data.checkoutId};
 }
-export async function verifyCustomerCheckout(checkoutId,{projectId,purpose}={}){
+export async function getCustomerCheckoutStatus(checkoutId,{projectId,purpose}={}){
   if(!checkoutId||!projectId||!purpose)throw new Error('Missing website-specific checkout information.');
   const {data,error}=await supabase.functions.invoke('square-subscriptions',{
     body:{action:'verify-checkout',checkoutId,projectId,purpose}
   });
   if(error||data?.message)throw new Error(data?.message||error.message);
   if(data?.projectId!==projectId||data?.purpose!==purpose)throw new Error('The checkout verification was not linked to this website.');
-  return data?.verified===true;
+  const safeDocument=value=>{try{const url=new URL(value);return url.protocol==='https:'&&(/(^|\.)squareup\.com$/.test(url.hostname)||/(^|\.)square\.link$/.test(url.hostname))?url.href:null}catch{return null}};
+  return {verified:data?.verified===true,projectId,purpose,checkoutId,documentUrl:safeDocument(data?.invoiceUrl)||safeDocument(data?.receiptUrl)};
 }
+
+export async function verifyCustomerCheckout(checkoutId,options={}){return (await getCustomerCheckoutStatus(checkoutId,options)).verified}

@@ -1,6 +1,8 @@
+import {getCustomerCheckoutStatus} from './square-checkout.js?v=20261016-card-status-contact';
 import {getSitePreviews} from './site-preview-catalog.js?v=20261016-sites-catalog';
 // Client-owned website projects. Requires sql/website-projects.sql to be applied first.
 let api=null, viewer=null, refreshView=()=>{}, projects=[], selected=null, step=0, errorText='', beforeProjectClose=null, availablePreviews=()=>[];
+const projectCompletion=new Map();
 const activeWizardKey='steadyhands.website.setup.active';
 function rememberWizard(id,index){try{sessionStorage.setItem(activeWizardKey,JSON.stringify({user:viewer?.id,project:id,step:index}))}catch{}}
 function forgetWizard(){try{sessionStorage.removeItem(activeWizardKey)}catch{}}
@@ -43,18 +45,60 @@ function projectHasStarted(p){
  // Preserve progress in older drafts that predate the explicit source marker.
  return fields.flatMap(section=>section.items).some(([key])=>key!=='hosting_plan'&&hasValue(p.details?.[key]));
 }
-function projectSteps(p){
- const id=esc(p.id),approved=!!p.details?.__design_approved_at;
- if(!projectHasStarted(p))return '<section class="project-step-card project-start-card"><span class="home-kicker">MAKE A SITE</span><h4>How would you like to start?</h4><p>Create a site from questions, or approve a preview you already have.</p><div class="project-step-actions"><button type="button" class="secondary" data-project-edit="'+id+'">Create a Site from Questions</button><button type="button" class="primary" data-project-approve="'+id+'">Ready to Approve a Preview</button></div></section>';
- return '<div class="project-step-grid project-purchase-grid">'+
- '<section class="project-step-card"><span class="home-kicker">01 · AGREEMENT</span><h4>Agreement</h4><p>Review, sign, or download the agreement for this website.</p><button type="button" class="secondary" data-project-purchase-step="agreement" data-project-id="'+id+'">Start Agreement</button></section>'+
- '<section class="project-step-card"><span class="home-kicker">02 · DEVELOPMENT</span><h4>Development</h4><p>'+(approved?'Your preview approval is saved.':'Continue your website details or approve an existing preview.')+' Website development is $100 once, separate from hosting.</p><div class="project-step-actions">'+(!approved?'<button type="button" class="secondary" data-project-edit="'+id+'">'+(p.status==='draft'?'Continue Site Questions':'Edit Website Details')+'</button>':'')+'<button type="button" class="secondary" data-project-approve="'+id+'">'+(approved?'View Approved Preview':'Review & Approve Preview')+'</button><button type="button" class="primary" data-project-purchase-step="design" data-project-id="'+id+'">Pay for Development</button></div></section>'+
- '<section class="project-step-card"><span class="home-kicker">03 · HOSTING</span><h4>Hosting</h4><p>Standard Hosting is $20/month. Business Hosting is $30/month. Agreement and development payment are checked before checkout.</p><button type="button" class="secondary" data-project-purchase-step="hosting" data-project-id="'+id+'">Pay for Hosting</button></section></div>';
+async function loadProjectCompletion(){
+ const priorViewer=viewer.id;
+ const {data:agreements,error}=await api.from('portal_project_agreements').select('project_id').eq('user_id',viewer.id).eq('agreement_version','2026-10-14-project-v1').eq('acknowledged',true);
+ const signed=new Set((Array.isArray(agreements)?agreements:[]).map(a=>a.project_id));
+ await Promise.allSettled(projects.map(async p=>{
+  const previous=projectCompletion.get(p.id)||{},state={...previous,agreementSigned:error?!!previous.agreementSigned:signed.has(p.id)};
+  const sessions=viewer.user_metadata?.portal_project_purchase_drafts?.[p.id]?.checkoutSessions||{};
+  for(const purpose of ['development','hosting']){
+   if(!sessions[purpose]){state[purpose]=null;state[purpose+'Unavailable']=false;continue}
+   try{state[purpose]=await getCustomerCheckoutStatus(sessions[purpose],{projectId:p.id,purpose});state[purpose+'Unavailable']=false}
+   catch{state[purpose+'Unavailable']=true}
+  }
+  if(viewer.id===priorViewer)projectCompletion.set(p.id,state);
+ }));
 }
+function projectSteps(p){
+ const id=esc(p.id),approved=!!p.details?.__design_approved_at,state=projectCompletion.get(p.id)||{};
+ if(!projectHasStarted(p))return '<section class="project-step-card project-start-card"><span class="home-kicker">MAKE A SITE</span><h4>How would you like to start?</h4><p>Create a site from questions, or approve a preview you already have.</p><div class="project-step-actions"><button type="button" class="secondary" data-project-edit="'+id+'">Create a Site from Questions</button><button type="button" class="secondary" data-project-approve="'+id+'">Ready to Approve a Preview</button></div></section>';
+ const action=(stage,label)=>'<div class="project-step-actions"><button type="button" class="secondary project-step-action" data-project-purchase-step="'+stage+'" data-project-id="'+id+'">'+label+'</button></div>';
+ const paid=purpose=>state[purpose]?.verified===true;
+ return '<div class="project-step-grid project-purchase-grid">'+
+ '<section class="project-step-card '+(state.agreementSigned?'is-complete':'')+'"><span class="home-kicker">01 · AGREEMENT</span><h4>Agreement</h4><p>'+(state.agreementSigned?'Your signed agreement is saved.':'Sign the agreement for this website.')+'</p>'+action('agreement',state.agreementSigned?'Review Agreement':'Start Agreement')+'</section>'+
+ '<section class="project-step-card '+(paid('development')?'is-complete':'')+'"><span class="home-kicker">02 · DEVELOPMENT</span><h4>Development</h4><p>'+(paid('development')?'Your development payment is confirmed.':'Website development is $100 once, separate from hosting.')+'</p><div class="project-step-tools">'+(!approved?'<button type="button" class="project-subaction" data-project-edit="'+id+'">'+(p.status==='draft'?'Continue Site Questions':'Edit Website Details')+'</button>':'')+'<button type="button" class="project-subaction" data-project-approve="'+id+'">'+(approved?'View Approved Preview':'Approve Preview')+'</button></div>'+action('design',paid('development')?'Review Invoice':state.developmentUnavailable?'Check Payment Status':'Pay for Development')+'</section>'+
+ '<section class="project-step-card '+(paid('hosting')?'is-complete':'')+'"><span class="home-kicker">03 · HOSTING</span><h4>Hosting</h4><p>'+(paid('hosting')?'Your hosting payment is confirmed.':'Standard Hosting is $20/month. Business Hosting is $30/month.')+'</p>'+action('hosting',paid('hosting')?'Review Invoice':state.hostingUnavailable?'Check Payment Status':'Pay for Hosting')+'</section></div>';
+}
+function contactDesignSpecialist(id){
+ const p=getProject(id);if(!p)return;
+ let mode='phone';const values={phone:'',email:''};
+ const d=dialog('<div class="project-modal"><header><div><span class="home-kicker">DESIGN SUPPORT</span><h2>Contact Design Specialist</h2></div><button type="button" class="project-close" data-project-close aria-label="Close">×</button></header><p>Website: '+esc(p.display_name)+'</p><div class="project-contact-tabs"><button type="button" class="secondary" data-contact-mode="phone" aria-pressed="true">Phone</button><button type="button" class="secondary" data-contact-mode="email" aria-pressed="false">Switch to Email</button></div><div id="specialist-contact-fields"></div><small>Enter your design specialist’s contact details. These buttons open your device’s app; you choose whether to send or call.</small></div>');
+ const render=()=>{
+  const fields=d.querySelector('#specialist-contact-fields');
+  fields.innerHTML='<label>'+(mode==='phone'?'Specialist phone number':'Specialist email address')+'<input id="specialist-contact-value" '+(mode==='phone'?'type="tel" inputmode="tel" placeholder="Enter phone number"':'type="email" placeholder="specialist@example.com"')+' value="'+esc(values[mode])+'"></label><p id="specialist-contact-message" role="status"></p><div class="project-contact-actions"></div>';
+  const input=fields.querySelector('input'),actions=fields.querySelector('.project-contact-actions');
+  const update=()=>{
+   values[mode]=input.value;const value=input.value.trim();actions.innerHTML='';
+   if(!value)return;
+   const phone=value.replace(/[\s().-]/g,'');
+   if(mode==='phone'&&!/^\+?\d{7,15}$/.test(phone)){fields.querySelector('[role=status]').textContent='Enter a valid phone number, including the country code if needed.';return}
+   if(mode==='email'&&!input.checkValidity()){fields.querySelector('[role=status]').textContent='Enter a valid email address.';return}
+   fields.querySelector('[role=status]').textContent='';
+   const link=(label,href)=>{const a=document.createElement('a');a.className='secondary';a.textContent=label;a.href=href;actions.append(a)};
+   if(mode==='phone'){link('Open Messages','sms:'+phone);link('Call','tel:'+phone)}
+   else link('Open Email','mailto:'+encodeURIComponent(value)+'?subject='+encodeURIComponent('Website design: '+p.display_name));
+  };
+  input.oninput=update;update();
+ };
+ d.querySelectorAll('[data-contact-mode]').forEach(button=>button.onclick=()=>{mode=button.dataset.contactMode;d.querySelectorAll('[data-contact-mode]').forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset.contactMode===mode));b.textContent=b.dataset.contactMode==='phone'?(mode==='phone'?'Phone':'Switch to Phone'):(mode==='email'?'Email':'Switch to Email')});render()});
+ render();
+}
+
 export function websiteProjectsMarkup(){
  if(errorText)return '<div class="project-notice">Website projects are not available yet. Contact support for help. <small>'+esc(errorText)+'</small></div>';
  if(!projects.length)return '<div class="home-empty"><span class="home-empty-icon">'+icon('panel-top')+'</span><h3>No websites yet</h3><p>Create a site from questions, or approve a preview you already have. Agreement, design payment, and hosting are separate steps.</p><button class="primary" data-project-add>Create a Website</button><button class="secondary" data-project-add data-start-preview>Ready to Approve a Preview</button></div>';
- return '<div class="project-list">'+projects.map(p=>{const archived=p.details?.__archived===true,active=['draft','awaiting_payment'].includes(p.status),id=esc(p.id);return '<article class="project-card'+(archived?' project-archived':'')+'"><div class="project-card-body"><div class="project-top"><span class="project-icon">'+icon('globe')+'</span><div class="project-name"><h3>'+esc(p.display_name)+'</h3><span class="project-badge">'+(archived?'Archived':esc(status(p)))+'</span></div><button type="button" class="secondary project-small" data-project-rename="'+id+'">Rename</button></div>'+(active?projectSteps(p):'<p>Follow the progress of your website.</p><button type="button" class="primary" data-project-view="'+id+'">View Project</button>')+'<div class="project-actions">'+(p.preview_code?'<span class="project-linked">'+icon('link')+' Preview linked</span>':'')+'<button type="button" class="secondary project-archive-button" data-project-archive="'+id+'">Archive</button></div></div>'+(archived?'<div class="project-archive-shade" aria-hidden="true"></div><div class="project-archive-action"><span>'+icon('archive')+' Archived</span><button type="button" class="primary" data-project-unarchive="'+id+'">'+icon('archive-restore')+' Unarchive</button></div>':'')+'</article>'}).join('')+'</div>';
+ return '<div class="project-list">'+projects.map(p=>{const archived=p.details?.__archived===true,active=['draft','awaiting_payment'].includes(p.status),id=esc(p.id);return '<article class="project-card'+(archived?' project-archived':'')+'"><div class="project-card-body"><div class="project-top"><span class="project-icon">'+icon('globe')+'</span><div class="project-name"><div class="project-name-line"><h3>'+esc(p.display_name)+'</h3><button type="button" class="secondary project-specialist-button" data-project-specialist="'+id+'">Contact Design Specialist</button></div><span class="project-badge">'+(archived?'Archived':esc(status(p)))+'</span></div><button type="button" class="secondary project-small" data-project-rename="'+id+'">Rename</button></div>'+projectSteps(p)+'<div class="project-actions">'+(p.preview_code?'<span class="project-linked">'+icon('link')+' Preview linked</span>':'')+'<button type="button" class="secondary project-archive-button" data-project-archive="'+id+'">Archive</button></div></div>'+(archived?'<div class="project-archive-shade" aria-hidden="true"></div><div class="project-archive-action"><span>'+icon('archive')+' Archived</span><button type="button" class="primary" data-project-unarchive="'+id+'">'+icon('archive-restore')+' Unarchive</button></div>':'')+'</article>'}).join('')+'</div>';
 }
 function dialog(html){beforeProjectClose=null;let d=document.querySelector('#website-project-dialog');if(!d){d=document.createElement('dialog');d.id='website-project-dialog';d.className='website-project-dialog';document.body.append(d);d.addEventListener('click',e=>{if(e.target===d)close()});d.addEventListener('cancel',e=>{if(beforeProjectClose){e.preventDefault();close()}});}d.previewRequest=null;d.innerHTML=html;d.showModal();redrawIcons();return d}
 function close(){if(beforeProjectClose)return beforeProjectClose();forgetWizard();document.querySelector('#website-project-dialog')?.close()}
@@ -412,7 +456,7 @@ function resumeStep(p){
  return unfinished<0?fields.length-1:unfinished;
 }
 function launchProjectPayment(p,purchaseStage=null){
- if(!p||!['draft','awaiting_payment'].includes(p.status))return;
+ if(!p||p.details?.__archived)return;
  sessionStorage.setItem('portal_preferred_plan',p.details?.hosting_plan==='business'?'backend':'standard');
  sessionStorage.setItem('steadyhands.portal.checkout_project',p.id);
  close();
@@ -486,11 +530,12 @@ export function openWebsitePreviewQuestionnaire({details={},submit,onComplete}){
  render();
 }
 
-export async function initWebsiteProjects({supabase,user,refresh,getPreviews=()=>[]}){api=supabase;viewer=user;refreshView=refresh;availablePreviews=getPreviews;const {data,error}=await api.from('portal_website_projects').select('*').eq('user_id',user.id).order('created_at',{ascending:false});if(error)errorText=error.message;else{projects=data||[];errorText=''}// Restore only an unfinished setup for this signed-in user after refreshing the page.
+export async function initWebsiteProjects({supabase,user,refresh,getPreviews=()=>[]}){if(viewer?.id!==user.id)projectCompletion.clear();api=supabase;viewer=user;refreshView=refresh;availablePreviews=getPreviews;const {data,error}=await api.from('portal_website_projects').select('*').eq('user_id',user.id).order('created_at',{ascending:false});if(error)errorText=error.message;else{projects=data||[];errorText='';await loadProjectCompletion()}// Restore only an unfinished setup for this signed-in user after refreshing the page.
 try{
  const active=JSON.parse(sessionStorage.getItem(activeWizardKey)||'null');
  const p=active?.user===viewer.id?getProject(active.project):null;
  if(p?.status==='draft'&&Number.isInteger(active.step)&&active.step>=0&&active.step<fields.length){selected=p.id;step=active.step;wizard()}
  else if(active)forgetWizard();
 }catch{forgetWizard()}
-document.addEventListener('click',e=>{const b=e.target.closest('[data-project-approve],[data-project-purchase-step],[data-project-add],[data-project-edit],[data-project-rename],[data-project-preview],[data-project-close],[data-project-checkout],[data-project-view],[data-project-open],[data-project-archive],[data-project-unarchive]');if(!b)return;if(b.dataset.projectApprove){approveProjectPreview(b.dataset.projectApprove);return}if(b.dataset.projectPurchaseStep){launchProjectPayment(getProject(b.dataset.projectId),b.dataset.projectPurchaseStep);return}if(b.dataset.projectUnarchive){e.preventDefault();e.stopPropagation();setProjectArchived(b.dataset.projectUnarchive,false);return}if(b.dataset.projectArchive){e.preventDefault();e.stopPropagation();setProjectArchived(b.dataset.projectArchive,true);return}if(b.dataset.projectOpen){if(e.target.closest('button,a,input,select,textarea')&&!e.target.closest('[data-project-open].project-title-button'))return;openProject(b.dataset.projectOpen);return}if(b.dataset.projectClose!==undefined){close();return}if(b.dataset.projectAdd!==undefined){addDialog(false,b.hasAttribute('data-start-preview'));return}if(b.dataset.projectEdit){selected=b.dataset.projectEdit;step=0;openWizard(b.dataset.projectEdit)}if(b.dataset.projectRename)rename(b.dataset.projectRename);if(b.dataset.projectPreview)preview(b.dataset.projectPreview);if(b.dataset.projectView){const p=getProject(b.dataset.projectView);if(p?.status==='awaiting_payment')launchProjectPayment(p);else view(b.dataset.projectView);return}if(b.dataset.projectCheckout){const p=getProject(b.dataset.projectCheckout);if(!p)return;if(p.status==='draft'){openWizard(p.id);return}if(p.status!=='awaiting_payment'){view(p.id);return}launchProjectPayment(p)}});return {reload:async()=>{const r=await api.from('portal_website_projects').select('*').eq('user_id',viewer.id);if(!r.error){projects=r.data||[];refreshView()}}}}
+window.addEventListener('steadyhands:project-status-changed',async()=>{const auth=await api.auth.getUser();if(auth.data?.user)viewer=auth.data.user;await loadProjectCompletion();refreshView()});
+document.addEventListener('click',e=>{const b=e.target.closest('[data-project-specialist],[data-project-approve],[data-project-purchase-step],[data-project-add],[data-project-edit],[data-project-rename],[data-project-preview],[data-project-close],[data-project-checkout],[data-project-view],[data-project-open],[data-project-archive],[data-project-unarchive]');if(!b)return;if(b.dataset.projectSpecialist){contactDesignSpecialist(b.dataset.projectSpecialist);return}if(b.dataset.projectApprove){approveProjectPreview(b.dataset.projectApprove);return}if(b.dataset.projectPurchaseStep){launchProjectPayment(getProject(b.dataset.projectId),b.dataset.projectPurchaseStep);return}if(b.dataset.projectUnarchive){e.preventDefault();e.stopPropagation();setProjectArchived(b.dataset.projectUnarchive,false);return}if(b.dataset.projectArchive){e.preventDefault();e.stopPropagation();setProjectArchived(b.dataset.projectArchive,true);return}if(b.dataset.projectOpen){if(e.target.closest('button,a,input,select,textarea')&&!e.target.closest('[data-project-open].project-title-button'))return;openProject(b.dataset.projectOpen);return}if(b.dataset.projectClose!==undefined){close();return}if(b.dataset.projectAdd!==undefined){addDialog(false,b.hasAttribute('data-start-preview'));return}if(b.dataset.projectEdit){selected=b.dataset.projectEdit;step=0;openWizard(b.dataset.projectEdit)}if(b.dataset.projectRename)rename(b.dataset.projectRename);if(b.dataset.projectPreview)preview(b.dataset.projectPreview);if(b.dataset.projectView){const p=getProject(b.dataset.projectView);if(p?.status==='awaiting_payment')launchProjectPayment(p);else view(b.dataset.projectView);return}if(b.dataset.projectCheckout){const p=getProject(b.dataset.projectCheckout);if(!p)return;if(p.status==='draft'){openWizard(p.id);return}if(p.status!=='awaiting_payment'){view(p.id);return}launchProjectPayment(p)}});return {reload:async()=>{const r=await api.from('portal_website_projects').select('*').eq('user_id',viewer.id);if(!r.error){projects=r.data||[];const auth=await api.auth.getUser();if(auth.data?.user)viewer=auth.data.user;await loadProjectCompletion();refreshView()}}}}
