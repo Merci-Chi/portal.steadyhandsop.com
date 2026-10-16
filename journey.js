@@ -1,4 +1,4 @@
-import {hostingCards} from './website-projects.js?v=20261016-three-steps';
+import {hostingCards} from './website-projects.js?v=20261016-create-preview-picker';
 import {supabase} from './supabase-client.js';
 import {createCustomerCheckout,verifyCustomerCheckout} from './square-checkout.js';
 const wrapper=document.createElement('div');wrapper.id='journey-dialog-overlay';wrapper.hidden=true;

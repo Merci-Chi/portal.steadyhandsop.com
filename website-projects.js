@@ -67,7 +67,29 @@ function addDialog(force=false,startPreview=false){
   d.querySelectorAll('[data-existing-project]').forEach(b=>b.onclick=()=>openProject(b.dataset.existingProject));
   return;
  }
- const d=dialog('<form id="project-create-form" class="project-modal"><header><div><span class="home-kicker">NEW WEBSITE</span><h2>Add New Website</h2></div><button class="project-close" type="button" data-project-close aria-label="Close">×</button></header><p>Name your website project. Next, choose questions or approve an existing preview.</p><label>Display Name <input name="display_name" required maxlength="100" placeholder="e.g. My Landscaping Website" autofocus></label><details><summary>Have a website preview? (Optional)</summary><label>Preview Code <input name="preview_code" maxlength="100" placeholder="Enter your preview code"></label><small>Preview codes can be added or changed later.</small></details><p id="project-message" role="status"></p><div class="project-modal-actions"><button type="button" class="secondary" data-project-close>Cancel</button><button class="primary" type="submit">Create Website</button></div></form>');d.querySelector('form').onsubmit=async e=>{e.preventDefault();const b=e.submitter;b.disabled=true;const fd=new FormData(e.target);const {data,error}=await api.from('portal_website_projects').insert({user_id:viewer.id,display_name:String(fd.get('display_name')).trim(),preview_code:String(fd.get('preview_code')||'').trim()||null,details:defaultData()}).select().single();if(error){notify(error.message);b.disabled=false;return}projects.unshift(data);close();refreshView();if(startPreview)approveProjectPreview(data.id);else intro(data.id)};}
+ const d=dialog('<form id="project-create-form" class="project-modal"><header><div><span class="home-kicker">NEW WEBSITE</span><h2>Add New Website</h2></div><button class="project-close" type="button" data-project-close aria-label="Close">×</button></header><p>Name your website project. You can choose a preview or enter a code now, or create a site from questions later.</p><label>Display Name <input name="display_name" required maxlength="100" placeholder="e.g. My Landscaping Website" autofocus></label><details open><summary>Have a website preview? (Optional)</summary><label>Available Previews<select name="assigned" disabled><option value="">Loading previews…</option></select></label><label>Or enter a Preview Code<input name="preview_code" maxlength="100" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Enter your preview code"></label><small>Select any preview from our Sites collection or enter your own code. You can also leave both blank and start later.</small></details><p id="project-message" role="status" aria-live="polite"></p><div class="project-modal-actions"><button type="button" class="secondary" data-project-close>Cancel</button><button class="primary" type="submit">Create Website</button></div></form>');
+ const form=d.querySelector('form'),picker=form.elements.assigned,codeInput=form.elements.preview_code;
+ projectPreviewChoices().then(choices=>{
+  if(!form.isConnected||d.querySelector('form')!==form)return;
+  picker.innerHTML='<option value="">Choose a preview (optional)</option>'+choices.map(v=>'<option value="'+esc(v.site_key)+'">'+esc(v.site_title||v.site_key)+'</option>').join('');
+  picker.disabled=false;
+  if([...picker.options].some(o=>o.value===codeInput.value.trim().toUpperCase()))picker.value=codeInput.value.trim().toUpperCase();
+ }).catch(()=>{if(form.isConnected){picker.innerHTML='<option value="">Enter a preview code below</option>';picker.disabled=true}});
+ picker.onchange=()=>{codeInput.value=picker.value};
+ codeInput.oninput=()=>{picker.value=[...picker.options].some(o=>o.value===codeInput.value.trim().toUpperCase())?codeInput.value.trim().toUpperCase():''};
+ form.onsubmit=async e=>{
+  e.preventDefault();const b=e.submitter;b.disabled=true;
+  try{
+   const name=form.elements.display_name.value.trim();if(!name)throw new Error('Enter a display name.');
+   const code=codeInput.value.trim().toUpperCase();
+   if(code){notify('Checking your preview…');await resolveProjectPreview(code)}
+   const {data,error}=await api.from('portal_website_projects').insert({user_id:viewer.id,display_name:name,preview_code:code||null,details:defaultData()}).select().single();
+   if(error)throw error;
+   projects.unshift(data);close();refreshView();if(startPreview||code)approveProjectPreview(data.id);else intro(data.id);
+  }catch(error){notify(error.message)}finally{b.disabled=false}
+ };
+}
+
 async function save(p,details,submit=false){const payload={details, ...(submit?{status:'awaiting_payment',submitted_at:new Date().toISOString()}:{})};const {data,error}=await api.from('portal_website_projects').update(payload).eq('id',p.id).eq('user_id',viewer.id).select().single();if(error){notify('Could not save: '+error.message);return false}Object.assign(p,data);return true}
 function intro(id){
  const d=dialog('<div class="project-modal"><header><div><span class="home-kicker">MAKE A SITE</span><h2>How would you like to start?</h2></div><button type="button" class="project-close" data-project-close aria-label="Close">×</button></header><p>Create a site from questions, or approve a preview you already have. Your agreement, website design payment, and hosting each have their own card.</p><div class="project-step-grid"><section class="project-step-card"><h4>Create a Site from Questions</h4><p>Tell us about your business, services, and preferred style. Save and return anytime.</p><button type="button" class="primary" id="project-intro-next">Start Questions</button></section><section class="project-step-card"><h4>Ready to Approve a Preview</h4><p>Review and approve your existing preview without completing the questionnaire.</p><button type="button" class="primary" data-project-approve="'+esc(id)+'">Review My Preview</button></section></div><button type="button" class="secondary" data-project-close>Return to Website Cards</button></div>');
