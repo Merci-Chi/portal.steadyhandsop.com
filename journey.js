@@ -1,14 +1,20 @@
-import {hostingCards} from './website-projects.js?v=20261016-create-preview-picker';
+import {hostingCards} from './website-projects.js?v=20261016-independent-popups';
 import {supabase} from './supabase-client.js';
 import {createCustomerCheckout,verifyCustomerCheckout} from './square-checkout.js';
-const wrapper=document.createElement('div');wrapper.id='journey-dialog-overlay';wrapper.hidden=true;
-wrapper.innerHTML='<div class="journey-dialog" role="dialog" aria-modal="true" aria-labelledby="journey-dialog-title"><div class="journey-dialog-head"><h2 id="journey-dialog-title">Complete Your Purchase</h2><button type="button" id="journey-dialog-close" aria-label="Close">×</button></div><div id="journey-dialog-content"></div></div>';
-document.body.appendChild(wrapper);
+function createJourneyDialog(name){
+ const overlay=document.createElement('div');overlay.id='journey-'+name+'-overlay';overlay.className='journey-dialog-overlay';overlay.hidden=true;overlay.dataset.journeyOverlay=name;
+ overlay.innerHTML='<div class="journey-dialog" role="dialog" aria-modal="true" aria-labelledby="journey-'+name+'-title"><div class="journey-dialog-head"><h2 id="journey-'+name+'-title" data-journey-title></h2><button type="button" data-journey-close aria-label="Close">×</button></div><div data-journey-content></div></div>';
+ document.body.appendChild(overlay);return overlay;
+}
+const previewWrapper=createJourneyDialog('preview');
+const purchaseDialogs=[createJourneyDialog('agreement'),createJourneyDialog('development'),createJourneyDialog('hosting')];
+let wrapper=previewWrapper;
 const $=s=>wrapper.querySelector(s);
-function close(){wrapper.hidden=true;document.body.classList.remove('wizard-open')}
-function open(content,title){$('#journey-dialog-title').textContent=title;$('#journey-dialog-content').innerHTML=content;wrapper.hidden=false;document.body.classList.add('wizard-open')}
+function close(){wrapper.hidden=true;wrapper.querySelector('[data-journey-content]').innerHTML='';document.body.classList.remove('wizard-open')}
+function selectDialog(stage){close();wrapper=stage===null?previewWrapper:purchaseDialogs[stage]}
+function open(content,title){$('[data-journey-title]').textContent=title;$('[data-journey-content]').innerHTML=content;wrapper.hidden=false;document.body.classList.add('wizard-open')}
 document.addEventListener('steadyhands:approve-preview',async e=>{
- const {id,key}=e.detail||{};if(!key)return;
+ const {id,key}=e.detail||{};if(!key)return;selectDialog(null);
  open('<div class="journey-dialog-body"><div class="journey-dialog-icon">✓</div><h3>Approve your site preview?</h3><p>Confirm you are happy with this preview. Your approval will be recorded under Requests and shared with the Steady Hands team.</p><div class="journey-info">Site key: <strong id="approved-site-key"></strong></div><p id="approval-message" role="status"></p><button type="button" class="primary" id="confirm-preview-approval">Approve This Preview</button></div>','Review Your Site');
  $('#approved-site-key').textContent=key;
  $('#confirm-preview-approval').onclick=async()=>{
@@ -27,18 +33,13 @@ document.addEventListener('steadyhands:approve-preview',async e=>{
    if(error){$('#approval-message').textContent=error.message;button.disabled=false;return}
   }
   window.dispatchEvent(new CustomEvent('steadyhands:preview-approved',{detail:{key}}));
-  $('#journey-dialog-content').innerHTML='<div class="journey-dialog-body"><div class="journey-dialog-icon">✓</div><h3>Preview approved!</h3><p>Your website preview has been approved.</p><button type="button" class="primary" id="approval-finish">Done</button></div>';
+  $('[data-journey-content]').innerHTML='<div class="journey-dialog-body"><div class="journey-dialog-icon">✓</div><h3>Preview approved!</h3><p>Your website preview has been approved.</p><button type="button" class="primary" id="approval-finish">Done</button></div>';
   $('#approval-finish').onclick=()=>{close();location.reload()};
  };
 });
 
-const purchaseSteps=[
- {title:'Sign Agreement',hint:'Review and sign your website service agreement.'},
- {title:'Website Design',hint:'Complete the $100 one-time website development payment.'},
- {title:'Select Hosting',hint:'Choose Standard Hosting or Business Hosting.'}
-];
 let purchaseStep=0;
-let requestedPurchaseStage=null;
+let requestedPurchaseStage=0;
 let purchasePlan=null;
 let purchaseSaving=false;
 let signatureDrawn=false;
@@ -118,27 +119,24 @@ async function codeStatus(){
  hostingDiscount=data.hostingDiscount===true;
 }
 function purchaseMarkup(){
- const completed=completedCount();
- if(requestedPurchaseStage!==null){purchaseStep=requestedPurchaseStage;showingAgreementApproval=purchaseStep===0&&!!signedAgreement}
- const list='<div class="journey-purchase-steps">'+purchaseSteps.map((x,i)=>'<div class="journey-purchase-stage '+(i===(showingAgreementApproval?0:purchaseStep)?'active':'')+' '+(i<completed?'complete':'')+'"><span class="stage-number">'+(i<completed?'✓':i+1)+'</span><span>'+x.title+'</span></div>').join('')+'</div><div class="journey-progress-caption"><span>Purchase progress</span><strong>'+completed+'/3 complete</strong></div><div class="journey-progress"><div style="width:'+(completed/3*100)+'%"></div></div>';
+ purchaseStep=requestedPurchaseStage;
+ showingAgreementApproval=purchaseStep===0&&!!signedAgreement;
  let body='';
- if(completed===3&&requestedPurchaseStage===null){queueMicrotask(()=>window.dispatchEvent(new CustomEvent('steadyhands:purchase-complete',{detail:{projectId:purchaseProject.id}})));
-  body='<div class="journey-finish"><div class="journey-finish-icon">✓</div><h3>Everything is complete!</h3><p>Your agreement, website design step, and hosting checkout have been confirmed.</p><div class="journey-finish-checks"><div>✓ Agreement signed</div><div>'+(developmentBypass?'✓ Website design fee waived':'✓ Website design paid')+'</div><div>✓ Hosting confirmed</div></div><div class="journey-finish-actions"><button type="button" class="primary" id="journey-download-confirmation">↓ Download Confirmation</button><button type="button" class="secondary" id="journey-return-home">Back to Overview</button></div></div>';
- }else if(signedAgreement&&showingAgreementApproval){
+ if(signedAgreement&&showingAgreementApproval){
   body='<div class="journey-approval-screen"><span class="journey-approval-check" aria-hidden="true">✓</span><h3>Agreement Approved</h3><p>Your signed agreement for this website has been saved successfully.</p><p class="journey-approval-date">Signed: '+signedDateText()+'</p><button type="button" id="journey-download-signed" class="primary">↓ Download Signed PDF</button><button type="button" id="journey-signed-continue" class="secondary">Return to Website Cards</button></div>';
  }else if(purchaseStep===0){
-  body='<h3>1. Sign Agreement</h3><p>Review and sign for this website before paying.</p><div class="journey-info"><strong>Current agreement</strong><p>Read the <button type="button" class="journey-terms-link" id="journey-view-terms">Website Services Agreement (PDF)</button> version October 14, 2026.</p></div><label class="journey-sign-label">Signature</label><canvas id="journey-sign" width="760" height="220" aria-label="Draw a signature"></canvas><button type="button" class="secondary" id="journey-clear-sign">Clear Signature</button><label class="journey-agree"><input type="checkbox" id="journey-agree"> I have read and agree to the website service agreement.</label><button class="primary" id="journey-sign-submit" type="button">Sign Agreement</button>';
+  body='<h3>Sign Agreement</h3><p>Review and sign for this website before paying.</p><div class="journey-info"><strong>Current agreement</strong><p>Read the <button type="button" class="journey-terms-link" id="journey-view-terms">Website Services Agreement (PDF)</button> version October 14, 2026.</p></div><label class="journey-sign-label">Signature</label><canvas id="journey-sign" width="760" height="220" aria-label="Draw a signature"></canvas><button type="button" class="secondary" id="journey-clear-sign">Clear Signature</button><label class="journey-agree"><input type="checkbox" id="journey-agree"> I have read and agree to the website service agreement.</label><button class="primary" id="journey-sign-submit" type="button">Sign Agreement</button>';
  }else if(purchaseStep===1&&(designPaid||developmentBypass)){
-  body='<h3>Website Design</h3><div class="journey-info">'+(developmentBypass?'Your website development fee is waived.':'Your website design payment is confirmed.')+'</div><button type="button" class="secondary" id="journey-return-cards">Return to Website Cards</button>';
+  body='<h3>Development Payment</h3><div class="journey-info">'+(developmentBypass?'Your website development fee is waived.':'Your website design payment is confirmed.')+'</div><button type="button" class="secondary" id="journey-return-cards">Return to Website Cards</button>';
  }else if(purchaseStep===1){
-  body='<h3>Website Design Payment</h3><p>One-time website development</p><div class="journey-purchase-total"><strong>Website Design</strong><span>'+(developmentBypass?'<s>$100 once</s> <b class="code-free-label">FREE</b>':'$100 once')+'</span></div>'+promoUI('development_bypass')+(checkoutSessions.development?'<button type="button" class="secondary" id="purchase-verify">I’ve Completed Payment — Check Status</button>':'')+'<button type="button" class="primary" id="pay-website-design">'+(developmentBypass?'Next: Select Hosting':'Continue to Square Checkout')+'</button>';
+  body='<h3>Development Payment</h3><p>One-time website development</p><div class="journey-purchase-total"><strong>Development</strong><span>'+(developmentBypass?'<s>$100 once</s> <b class="code-free-label">FREE</b>':'$100 once')+'</span></div>'+promoUI('development_bypass')+(checkoutSessions.development?'<button type="button" class="secondary" id="purchase-verify">I’ve Completed Payment — Check Status</button>':'')+'<button type="button" class="primary" id="pay-website-design">Pay $100 for Development</button>';
  }else if(hostingPaid){
   body='<h3>Hosting confirmed</h3><p>Your hosting payment has been verified for this website.</p><button type="button" class="secondary" id="journey-return-cards">Return to Website Cards</button>';
  }else{
-  body='<h3>Hosting</h3><p>Select your monthly hosting plan to finish.</p>'+hostingCards(purchasePlan==='backend'?'business':purchasePlan,'journey-host','backend')+promoUI('local_hosting')+(checkoutSessions.hosting?'<button type="button" class="secondary" id="purchase-verify">I’ve Completed Payment — Check Status</button>':'')+'<button id="purchase-hosting-checkout" class="primary" type="button">Continue to Hosting Checkout</button>';
+  body='<h3>Hosting</h3><p>Select your monthly hosting plan to finish.</p>'+hostingCards(purchasePlan==='backend'?'business':purchasePlan,'journey-host','backend')+promoUI('local_hosting')+(checkoutSessions.hosting?'<button type="button" class="secondary" id="purchase-verify">I’ve Completed Payment — Check Status</button>':'')+'<button id="purchase-hosting-checkout" class="primary" type="button">Pay for Hosting</button>';
  }
  const prerequisite=purchaseStep>0&&purchaseProject?.status==='draft'?'Complete your website brief or approve a preview from Make a Site before payment.':purchaseStep>0&&!signedAgreement?'Sign your website agreement from the separate Agreement card before payment.':purchaseStep===2&&!(designPaid||developmentBypass)?'Complete Website Design payment before hosting checkout.':'';
- return '<div class="journey-dialog-body">'+(prerequisite?'<p class="journey-info" role="status">'+prerequisite+'</p>':'')+'<div class="journey-info">Website: <strong>'+String(purchaseProject?.display_name||'').replace(/[&<>"]/g,'')+'</strong></div>'+list+'<div class="journey-purchase-stage-content">'+body+'</div><p id="purchase-notice" role="status" class="journey-muted" aria-live="polite"></p></div>';
+ return '<div class="journey-dialog-body">'+(prerequisite?'<p class="journey-info" role="status">'+prerequisite+'</p>':'')+'<div class="journey-info">Website: <strong>'+String(purchaseProject?.display_name||'').replace(/[&<>"]/g,'')+'</strong></div><div class="journey-purchase-stage-content">'+body+'</div><p id="purchase-notice" role="status" class="journey-muted" aria-live="polite"></p></div>';
 }
 async function refreshPaymentStatus(){
  if(!purchaseUser)return;
@@ -167,9 +165,9 @@ function setupSignatureCanvas(){signatureDrawn=false;
  $('#journey-clear-sign').onclick=()=>{ctx.clearRect(0,0,canvas.width,canvas.height);signatureDrawn=false};
 }
 function renderPurchase(){
- open(purchaseMarkup(),requestedPurchaseStage===0?'Website Agreement':requestedPurchaseStage===1?'Website Design':'Website Purchase');
+ open(purchaseMarkup(),['Start Agreement','Pay for Development','Pay for Hosting'][requestedPurchaseStage]);
  wrapper.querySelectorAll('[data-open-code]').forEach(b=>b.onclick=()=>{const p=b.closest('.purchase-code-box').querySelector('.purchase-code-fields');p.hidden=!p.hidden;if(!p.hidden)p.querySelector('input').focus()});
- wrapper.querySelectorAll('[data-apply-code]').forEach(b=>b.onclick=async()=>{const p=b.closest('.purchase-code-fields'),note=p.querySelector('.purchase-code-feedback'),code=p.querySelector('input').value.trim();if(!code){note.textContent='Enter your code.';return}b.disabled=true;note.textContent='Verifying code…';try{const {data,error}=await supabase.functions.invoke('portal-promo',{body:{action:'redeem',purpose:b.dataset.applyCode,code}});if(error||data?.message)throw new Error(data?.message||'Unable to validate code');if(data?.valid!==true){note.textContent='Invalid code for this step.';return}await codeStatus();if(b.dataset.applyCode==='development_bypass'&&developmentBypass&&requestedPurchaseStage===null)purchaseStep=2;renderPurchase();$('#purchase-notice').textContent=developmentBypass?'Development fee waived. Continue by selecting hosting.':'Code applied successfully.'}catch(e){note.textContent=e.message||'Code could not be applied.'}finally{b.disabled=false}});
+ wrapper.querySelectorAll('[data-apply-code]').forEach(b=>b.onclick=async()=>{const p=b.closest('.purchase-code-fields'),note=p.querySelector('.purchase-code-feedback'),code=p.querySelector('input').value.trim();if(!code){note.textContent='Enter your code.';return}b.disabled=true;note.textContent='Verifying code…';try{const {data,error}=await supabase.functions.invoke('portal-promo',{body:{action:'redeem',purpose:b.dataset.applyCode,code}});if(error||data?.message)throw new Error(data?.message||'Unable to validate code');if(data?.valid!==true){note.textContent='Invalid code for this step.';return}await codeStatus();renderPurchase();$('#purchase-notice').textContent=developmentBypass?'Development fee waived. Return to your website cards to pay for hosting.':'Code applied successfully.'}catch(e){note.textContent=e.message||'Code could not be applied.'}finally{b.disabled=false}});
  setupSignatureCanvas();
  const sign=$('#journey-sign-submit');
  if(sign)sign.onclick=async()=>{
@@ -219,7 +217,7 @@ function renderPurchase(){
  const continueSigned=$('#journey-signed-continue');if(continueSigned)continueSigned.onclick=()=>{close();location.hash='website'};
  const cards=$('#journey-return-cards');if(cards)cards.onclick=()=>{close();location.hash='website'};
  const terms=$('#journey-view-terms');if(terms)terms.onclick=()=>{const modal=document.createElement('div');modal.className='journey-terms-overlay';modal.innerHTML='<section class="journey-terms-box journey-terms-embedded" role="dialog" aria-modal="true" aria-label="Website Services Agreement PDF"><div class="journey-terms-heading"><h3>Website Services Agreement (PDF)</h3><a href="website-services-agreement.pdf" target="_blank" rel="noopener noreferrer">Open or download PDF ↗</a></div><iframe title="Steady Hands Website Services Agreement PDF" src="website-services-agreement.pdf#toolbar=1"></iframe><p><a href="website-services-agreement.pdf" target="_blank" rel="noopener noreferrer">If the preview is blank, open the PDF here.</a></p><button type="button" class="primary" id="close-terms">Close</button></section>';document.body.appendChild(modal);modal.querySelector('#close-terms').onclick=()=>modal.remove();modal.onclick=e=>{if(e.target===modal)modal.remove()}};
- const verify=$('#purchase-verify');if(verify)verify.onclick=async()=>{verify.disabled=true;$('#purchase-notice').textContent='Checking Square payment status…';await refreshPaymentStatus();renderPurchase();if(completedCount()<3)$('#purchase-notice').textContent='Square has not confirmed the payment yet. Try again after checkout.'};
+ const verify=$('#purchase-verify');if(verify)verify.onclick=async()=>{verify.disabled=true;$('#purchase-notice').textContent='Checking Square payment status…';await refreshPaymentStatus();renderPurchase();if((requestedPurchaseStage===1&&!(designPaid||developmentBypass))||(requestedPurchaseStage===2&&!hostingPaid))$('#purchase-notice').textContent='Square has not confirmed this payment yet. Try again after checkout.'};
  const download=$('#journey-download-confirmation');if(download)download.onclick=downloadConfirmation;
  const home=$('#journey-return-home');if(home)home.onclick=()=>{close();location.hash='overview'};
  const options=wrapper.querySelectorAll('input[name="journey-host"]');
@@ -246,11 +244,14 @@ function renderPurchase(){
    noticeCheckout(message);
   }finally{button.disabled=false}
  }
- const design=$('#pay-website-design');if(design)design.onclick=()=>{if(developmentBypass){requestedPurchaseStage=2;purchaseStep=2;renderPurchase()}else checkout('development',design)};
+ const design=$('#pay-website-design');if(design)design.onclick=()=>{if(developmentBypass){renderPurchase()}else checkout('development',design)};
  const hosting=$('#purchase-hosting-checkout');if(hosting)hosting.onclick=async()=>{if(!purchasePlan){noticeCheckout('Select your hosting plan first.');return}await checkout(purchasePlan,hosting)};
 
 }
 document.addEventListener('steadyhands:purchase-options',async event=>{
+ requestedPurchaseStage=({agreement:0,design:1,hosting:2})[event.detail?.stage]??0;
+ selectDialog(requestedPurchaseStage);
+ open('<div class="journey-dialog-body"><p role="status">Loading this website…</p></div>',['Start Agreement','Pay for Development','Pay for Hosting'][requestedPurchaseStage]);
  const {data:{user}}=await supabase.auth.getUser();if(!user)return;
  const projectId=event.detail?.projectId||sessionStorage.getItem('steadyhands.portal.checkout_project');
  sessionStorage.removeItem('steadyhands.portal.checkout_project');
@@ -258,7 +259,7 @@ document.addEventListener('steadyhands:purchase-options',async event=>{
  const {data:project,error:projectError}=await supabase.from('portal_website_projects').select('id,user_id,display_name,status,details').eq('id',projectId).eq('user_id',user.id).maybeSingle();
  if(projectError||!project||!['draft','awaiting_payment'].includes(project.status)){open('<div class="journey-dialog-body"><p>This website is not available for payment.</p></div>','Website Checkout');return}
  purchaseProject=project;purchaseUser=user;showingAgreementApproval=false;
- requestedPurchaseStage=({agreement:0,design:1,hosting:2})[event.detail?.stage]??null;
+
  const draft=user.user_metadata?.portal_project_purchase_drafts?.[project.id]||{};
  const preferredPlan=sessionStorage.getItem('portal_preferred_plan');sessionStorage.removeItem('portal_preferred_plan');
  const projectPlan=project.details?.hosting_plan==='business'?'backend':'standard';
@@ -271,7 +272,9 @@ document.addEventListener('steadyhands:purchase-options',async event=>{
  await refreshPaymentStatus();
  renderPurchase();
 });
-window.addEventListener('focus',async()=>{if(wrapper.hidden||!purchaseUser||!signedAgreement||completedCount()===3)return;if(!checkoutSessions.development&&!checkoutSessions.hosting)return;await refreshPaymentStatus();renderPurchase()});
-$('#journey-dialog-close').onclick=close;
-wrapper.addEventListener('click',e=>{if(e.target===wrapper)close()});
+window.addEventListener('focus',async()=>{if(wrapper===previewWrapper||wrapper.hidden||!purchaseUser||!signedAgreement||completedCount()===3)return;if(!checkoutSessions.development&&!checkoutSessions.hosting)return;await refreshPaymentStatus();renderPurchase()});
+for(const overlay of [previewWrapper,...purchaseDialogs]){
+ overlay.querySelector('[data-journey-close]').onclick=()=>{if(wrapper===overlay)close()};
+ overlay.addEventListener('click',e=>{if(e.target===overlay&&wrapper===overlay)close()});
+}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!wrapper.hidden)close()});
