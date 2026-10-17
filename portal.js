@@ -1,6 +1,6 @@
 import {supabase} from './supabase-client.js';
-import {verifyCustomerCheckout} from './square-checkout.js?v=20261016-action-colors';
-import {initWebsiteProjects,websiteProjectsMarkup} from './website-projects.js?v=20261016-action-colors';
+import {verifyCustomerCheckout} from './square-checkout.js?v=20261016-payment-order';
+import {initWebsiteProjects,websiteProjectsMarkup} from './website-projects.js?v=20261016-payment-order';
 const $=s=>document.querySelector(s),safe=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let user=null,profile=null,companies=[],current=null,requests=[],previews=[];
 let invitationError='',invitationPreviews=[];
