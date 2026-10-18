@@ -618,7 +618,7 @@ async function checkPayments(manual=false){
     if(state.paid.development&&state.sessions.hosting&&!state.paid.hosting)await verifyOne('hosting');
     chooseStage();
     if(state.stage!==oldStage)render(true);
-    else if(manual)message('Your payment is not confirmed yet. Complete the Square checkout, then check again. Confirmation can take a moment.',true);
+    else if(manual)message('Your payment is not confirmed yet. Complete the Square checkout, then check again. Confirmation can take a moment.');
   }catch(e){if(manual)message(e.message||'Payment verification is temporarily unavailable. Please try again.');}
   finally{verifying=false;if(button?.isConnected){button.disabled=false;button.textContent='I’ve paid — check payment status';}}
 }
