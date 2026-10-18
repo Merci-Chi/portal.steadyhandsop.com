@@ -49,9 +49,21 @@ const storage = {
 const blank = () => ({user:null,profile:null,salesPreview:null,salesChoices:[],hasCheckout:false,project:null,agreement:null,preview:null,previewApproved:false,sessions:{},plan:'standard',paid:{development:false,hosting:false},documents:{},stage:0,submitted:null});
 let state = blank();
 let demo = new URL(location.href).searchParams.get('checkout_demo')==='1';
-let authMode = 'signup', api = null, apiPromise = null, signatureDrawn = false;
+const returnedFromPasswordReset=new URL(location.href).searchParams.get('reset')==='success';
+function consumeResetLoginEmail(){
+  if(!returnedFromPasswordReset)return '';
+  const raw=storage.get('steadyhands.portal.reset-login');
+  storage.remove('steadyhands.portal.reset-login');
+  try{
+    const hint=JSON.parse(raw);
+    const age=Date.now()-hint.savedAt;
+    return typeof hint.email==='string'&&age>=0&&age<15*60*1000?hint.email:'';
+  }catch{return '';}
+}
+let accountEmail=consumeResetLoginEmail();
+let authMode = returnedFromPasswordReset?'login':'signup', api = null, apiPromise = null, signatureDrawn = false;
 let busy = false, verifying = false, poll = null, clock = null, initEpoch = 0;
-let signatureData = '', lastAuthNotice = '';
+let signatureData = '', lastAuthNotice = returnedFromPasswordReset?'Password updated. Log in with your new password.':'';
 let awaitingSignupConfirmation = false;
 const entryContext = readEntryContext();
 const plans = {development:'website-development',standard:'standard-monthly',business:'backend-monthly'};
@@ -106,6 +118,7 @@ function showTerms(){
 }
 function download(blob,name){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);}
 function renderAccount(){
+  const typedEmail=$('#email')?.value.trim();if(typedEmail)accountEmail=typedEmail;
   const signup=authMode==='signup';
   $('#account-welcome').innerHTML=title('STEADY HANDS CLIENT PORTAL',signup?'Welcome. Let’s get started.':'Welcome back.','Sign in to your portal. If a preview was sent to you, it will be ready in the next popup.');
   $('#stage').innerHTML=
@@ -114,6 +127,7 @@ function renderAccount(){
     `<label class="field"><span>Email address</span><input id="email" type="email" autocomplete="email" placeholder="you@yourbusiness.com" required></label><label class="field"><span>Password</span><div class="password-wrap"><input id="password" type="password" autocomplete="${signup?'new-password':'current-password'}" minlength="8" placeholder="At least 8 characters" required><button type="button" id="toggle-password" aria-label="Show password">Show</button></div></label><label class="check-label"><input id="auth-consent" type="checkbox" required><span>I have read and accept the <button class="text-button" id="read-terms" type="button">Terms &amp; Website Agreement</button>.</span></label><p id="message" class="message" role="status"></p><button id="auth-submit" class="primary" type="submit" disabled>${signup?'Create account':'Log in'} <span aria-hidden="true">→</span></button></form>`+
     (!signup?'<button type="button" id="forgot-password" class="text-button forgot">Forgot your password?</button>':'')+
     '<p class="button-note">Your preview, website setup, and regular portal — all in one place.</p>';
+  $('#email').value=accountEmail;
   const options=document.createElement('details');options.className='popup-auth-options';options.innerHTML='<summary>Other sign-in options</summary><button class="secondary" id="popup-google" type="button">Continue with Google</button><button class="text-button" id="popup-magic" type="button">Email me a one-time login link</button>';$('#stage').appendChild(options);
   $('#popup-google').onclick=()=>otherSignIn('google');$('#popup-magic').onclick=()=>otherSignIn('magic');
   $('#read-terms').onclick=showTerms;

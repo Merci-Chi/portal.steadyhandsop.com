@@ -13,5 +13,12 @@ form.addEventListener('submit',async e=>{
  if(!data.session||!recovery){msg.textContent='Open this page using the password reset link from your email. If the link expired, request a new one.';return}
  const {error}=await supabase.auth.updateUser({password:p});
  if(error){msg.textContent=error.message;return}
- await supabase.auth.signOut();location.replace('login.html?reset=success');
+ // Carry only the verified recovery account's email to the login popup, including across tabs.
+ const email=data.session.user?.email;
+ try{
+  if(email)localStorage.setItem('steadyhands.portal.reset-login',JSON.stringify({email,savedAt:Date.now()}));
+ }catch{}
+ const signedOut=await supabase.auth.signOut();
+ if(signedOut.error){msg.textContent='Password updated, but sign-out failed. Please try again before logging in.';return}
+ location.replace('login.html?reset=success');
 });
