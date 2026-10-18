@@ -477,7 +477,7 @@ function paymentBlock(purpose){
   return (demo?'<div class="demo-payment">Preview payment only. No Square checkout or charge will be created.</div>':'')+
     primary(demo?'Preview payment':exists?'Return to Square checkout':purpose==='development'?`Pay ${money(CONFIG.development)} with Square`:`Pay ${money(CONFIG[state.plan])}/month with Square`,'pay')+
     (exists&&!demo?'<button type="button" class="secondary verify-button" id="verify-payment">I’ve paid — check payment status</button>':'')+
-    `<div class="payment-note">${icons.lock}<span>${demo?'Simulated payments are clearly marked throughout this preview.':'You’ll continue to Square’s secure checkout. Return here afterward; we’ll verify your payment before continuing.'}</span></div><p id="message" class="message" role="status"></p>`;
+    `<div class="payment-note">${icons.lock}<span>${demo?'Simulated payments are clearly marked throughout this preview.':'Square’s secure checkout opens in a new tab. Keep this portal open; we’ll verify your payment when you return.'}</span></div><p id="message" class="message" role="status"></p>`;
 }
 function renderDevelopment(){
   $('#stage').innerHTML=`<div class="verified-badge">✓ Agreement accepted</div><div class="step-icon" aria-hidden="true">${icons.code}</div>`+title('PAYMENT 1 OF 2','Let’s build your website.','A one-time development fee for a website built around your business.')+
@@ -505,6 +505,13 @@ async function persistPurchase(){
   const {data,error}=await client.auth.updateUser({data:{portal_project_purchase_drafts:drafts}});
   if(error)throw error;state.user=data.user;
 }
+function openSquareCheckout(checkoutWindow,url){
+  if(checkoutWindow&&!checkoutWindow.closed)checkoutWindow.location.replace(url);
+  render();
+  message(checkoutWindow&&!checkoutWindow.closed?'Square checkout opened in a new tab. Return here after paying.':'Your browser blocked the checkout tab. Use the link below to open it.');
+  const link=document.createElement('a');link.href=url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Open Square checkout in a new tab';link.style.display='block';
+  $('#message').appendChild(link);
+}
 async function startPayment(purpose){
   if(busy)return;
   if(!state.agreement || !state.previewApproved || (purpose==='hosting'&&!state.paid.development)){message('Approve your website preview and complete the agreement before payment. Development must be paid before hosting.');return;}
@@ -513,15 +520,19 @@ async function startPayment(purpose){
     $('#simulate-payment').onclick=()=>{state.paid[purpose]=true;state.sessions[purpose]='preview-'+purpose;closeModal();go(purpose==='development'?2:3);};return;
   }
   busy=true;const button=$('#pay');button.disabled=true;button.textContent='Preparing secure checkout…';message('');
+  let checkoutWindow=null,checkoutOpened=false;
   try{
     if(location.protocol!=='https:')throw new Error('Square checkout requires the hosted HTTPS page.');
+    // Open during the click, before asynchronous work, so browsers allow the new tab.
+    checkoutWindow=window.open('','_blank');
+    if(checkoutWindow){checkoutWindow.opener=null;checkoutWindow.document.title='Preparing Square checkout';checkoutWindow.document.body.textContent='Preparing your secure Square checkout…';}
     await verifiedUser();
     await assertPreviewApproval();
     const agreement=await loadAgreement();if(!agreement||agreement.id!==state.agreement.id)throw new Error('Your website agreement could not be verified. Please contact your developer.');
     if(state.sessions[purpose]){
       const already=await verifyOne(purpose);if(already){chooseStage();render(true);return;}
       const pending=safeSquareUrl(storage.get('steadyhands.checkout.url.'+state.sessions[purpose],true));
-      if(pending){await persistPurchase();location.assign(pending);return;}
+      if(pending){await persistPurchase();openSquareCheckout(checkoutWindow,pending);checkoutOpened=true;return;}
       throw new Error('A checkout is already pending for this website. Check payment status or contact your developer to recover the link before starting another payment.');
     }
     const kind=purpose==='development'?'development':state.plan;
@@ -533,11 +544,11 @@ async function startPayment(purpose){
     state.sessions[purpose]=data.checkoutId;
     storage.set('steadyhands.checkout.pending.'+state.user.id+'.'+state.project.id,JSON.stringify({checkoutSessions:state.sessions,plan:state.plan==='business'?'backend':'standard'}));
     storage.set('steadyhands.checkout.url.'+data.checkoutId,url,true);
-    // Save the checkout reference before navigating. It is never payment proof.
+    // Save the checkout reference before opening Square. It is never payment proof.
     await persistPurchase();
-    location.assign(url);
+    openSquareCheckout(checkoutWindow,url);checkoutOpened=true;
   }catch(e){message(e.message||'Could not start Square checkout. Please try again.');if(state.sessions[purpose])renderPaymentFailure(e.message);}
-  finally{busy=false;if(button.isConnected){button.disabled=false;button.innerHTML=(state.sessions[purpose]?'Return to Square checkout':'Try Square checkout again')+'<span class="arrow" aria-hidden="true">→</span>';}}
+  finally{if(!checkoutOpened&&checkoutWindow&&!checkoutWindow.closed)checkoutWindow.close();busy=false;if(button.isConnected){button.disabled=false;button.innerHTML=(state.sessions[purpose]?'Return to Square checkout':'Try Square checkout again')+'<span class="arrow" aria-hidden="true">→</span>';}}
 }
 function renderPaymentFailure(text){render();message(text);}
 async function verifyOne(purpose){
