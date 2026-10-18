@@ -13,3 +13,9 @@ For `verify-checkout`, accept `{action:'verify-checkout',checkoutId,projectId,pu
 Other changes: enforce idempotency to avoid accidental duplicate charges, handle Square return/webhooks, protect checkout records using server-only writes and authenticated reads, and allow independent subscriptions/cancellation per project. Store a durable versioned PDF/HTML copy of the signed agreement and timestamps before production use.
 
 Run `PROJECT_PURCHASE_SETUP.sql` once in Supabase SQL Editor. Replace only the corresponding web files. Test with two separate draft websites/accounts and a test Square environment before enabling live charges.
+
+## Optional codes in the onboarding popup
+
+The payment popup now accepts a code separately for development and hosting. Applying a code stages it in memory; it does not change prices or mark a payment verified. `create-checkout` includes optional `promoCode`. The backend must validate the code for the authenticated user, project, agreement, payment purpose and selected plan, calculate the amount server-side, and create the discounted Square checkout. Reject invalid/expired/ineligible codes without creating a checkout. Return `promoCodeAccepted: true` only when the code has actually been applied to the returned checkout. The frontend will not open a coded checkout without that acknowledgment. Requests without a code retain the existing contract. Pending checkouts cannot have their code changed.
+
+This repository does not contain the deployed Edge Function; its code validation and response support must be deployed separately before live code redemption works.

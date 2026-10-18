@@ -46,7 +46,7 @@ const storage = {
   set(key,value,session=false) { try { (session ? sessionStorage : localStorage).setItem(key,value); } catch {} },
   remove(key,session=false) { try { (session ? sessionStorage : localStorage).removeItem(key); } catch {} }
 };
-const blank = () => ({user:null,profile:null,salesPreview:null,salesChoices:[],hasCheckout:false,project:null,agreement:null,preview:null,previewApproved:false,sessions:{},plan:'standard',paid:{development:false,hosting:false},documents:{},stage:0,submitted:null});
+const blank = () => ({user:null,profile:null,salesPreview:null,salesChoices:[],hasCheckout:false,project:null,agreement:null,preview:null,previewApproved:false,sessions:{},codes:{},plan:'standard',paid:{development:false,hosting:false},documents:{},stage:0,submitted:null});
 let state = blank();
 let demo = new URL(location.href).searchParams.get('checkout_demo')==='1';
 const returnedFromPasswordReset=new URL(location.href).searchParams.get('reset')==='success';
@@ -76,7 +76,7 @@ function savePreview() {}
 function message(text='', success=false) { const el=$('#message'); if(el){el.textContent=text;el.classList.toggle('success',success);} }
 function setBusy(value) { busy=value; const btn=$('#submit'); if(btn){btn.disabled=value || !$('#agree')?.checked || !signatureDrawn;btn.textContent=value?'Saving securely…':state.user?'Agree & continue':authMode==='signup'?'Create account & continue':'Log in & continue';} }
 function primary(text,id,disabled=false) { return `<button class="primary" id="${id}" type="button" ${disabled?'disabled':''}>${text}<span class="arrow" aria-hidden="true">→</span></button>`; }
-function title(tag,heading,sub) { return `<p class="tag">${tag}</p><h2 id="stage-title" tabindex="-1">${heading}</h2><p class="sub">${sub}</p>`; }
+function title(tag,heading,sub) { return `${tag?`<p class="tag">${tag}</p>`:''}<h2 id="stage-title" tabindex="-1">${heading}</h2><p class="sub">${sub}</p>`; }
 function focusStage() { $('#onboarding-dialog').scrollTop=0;$('#stage-title')?.focus({preventScroll:true}); if(window.matchMedia('(max-width:759px)').matches && state.stage>0) window.scrollTo({top:0,behavior:'instant'}); }
 function updateProgress() {
   const order=[0,0.5,0.75,1,2,3,4], index=state.stage===0.1?0:state.stage===0.25?1:order.indexOf(state.stage), s=Math.min(state.stage,4), percent=state.stage===5?100:Math.round(Math.max(0,index)*100/7);
@@ -472,15 +472,20 @@ async function forgotPassword(){
   busy=true;
   try{const client=await getApi();const {error}=await client.auth.resetPasswordForEmail(email.value.trim(),{redirectTo:'https://portal.steadyhandsop.com/reset-password.html'});if(error)throw error;message('Password reset requested. If this address has an eligible account, check its inbox and spam folder for instructions.',true);}catch(e){message(e.message);}finally{busy=false;}
 }
+function paymentCode(purpose){
+  if(state.sessions[purpose])return '<p class="hint">A checkout is already pending. Contact your developer to change its code before paying.</p>';
+  const code=state.codes[purpose]||'';
+  return `<section class="payment-code"><button type="button" class="text-button" id="code-toggle" aria-expanded="${!!code}" aria-controls="payment-code-fields">Have a code?</button><form id="payment-code-fields" ${code?'':'hidden'}><label for="payment-code-input">Enter your code</label><div class="payment-code-row"><input id="payment-code-input" type="text" value="${esc(code)}" maxlength="80" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Enter your code"><button class="secondary" type="submit">Apply</button></div><small id="code-feedback" role="status">${code?'Code added. It will be verified at checkout.':''}</small></form></section>`;
+}
 function paymentBlock(purpose){
   const exists=!!state.sessions[purpose];
-  return (demo?'<div class="demo-payment">Preview payment only. No Square checkout or charge will be created.</div>':'')+
+  return paymentCode(purpose)+(demo?'<div class="demo-payment">Preview payment only. No Square checkout or charge will be created.</div>':'')+
     primary(demo?'Preview payment':exists?'Return to Square checkout':purpose==='development'?`Pay ${money(CONFIG.development)} with Square`:`Pay ${money(CONFIG[state.plan])}/month with Square`,'pay')+
     (exists&&!demo?'<button type="button" class="secondary verify-button" id="verify-payment">I’ve paid — check payment status</button>':'')+
     `<div class="payment-note">${icons.lock}<span>${demo?'Simulated payments are clearly marked throughout this preview.':'Square’s secure checkout opens in a new tab. Keep this portal open; we’ll verify your payment when you return.'}</span></div><p id="message" class="message" role="status"></p>`;
 }
 function renderDevelopment(){
-  $('#stage').innerHTML=`<div class="verified-badge">✓ Agreement accepted</div><div class="step-icon" aria-hidden="true">${icons.code}</div>`+title('PAYMENT 1 OF 2','Let’s build your website.','A one-time development fee for a website built around your business.')+
+  $('#stage').innerHTML=`<div class="payment-heading"><div class="verified-badge">✓ Agreement accepted</div><p class="tag">PAYMENT 1 OF 2</p></div>`+title('','Let’s build your website.','A one-time development fee for a website built around your business.')+
     `<div class="price-line"><strong>${money(CONFIG.development)}</strong><span>one-time<small>Separate from monthly hosting</small></span></div><ul class="feature-list"><li>Website design &amp; development</li><li>A layout that works on mobile and desktop</li><li>Review your website before it goes live</li></ul><div class="notice"><strong>One build. Ongoing partnership.</strong><br>Your hosting plan includes continued maintenance and technical support after launch.</div>`+paymentBlock('development');
   bindPayment('development');
 }
@@ -491,7 +496,21 @@ function renderHosting(){
   root.querySelectorAll('[name="hosting"]').forEach(el=>el.onchange=()=>{state.plan=el.value;savePreview();$('#pay').innerHTML=(demo?'Preview payment':`Pay ${money(CONFIG[state.plan])}/month with Square`)+'<span class="arrow" aria-hidden="true">→</span>';});
   bindPayment('hosting');
 }
-function bindPayment(purpose){$('#pay').onclick=()=>startPayment(purpose);if($('#verify-payment'))$('#verify-payment').onclick=()=>checkPayments(true);}
+function bindPayment(purpose){
+  $('#pay').onclick=()=>startPayment(purpose);
+  if($('#verify-payment'))$('#verify-payment').onclick=()=>checkPayments(true);
+  const toggle=$('#code-toggle'),form=$('#payment-code-fields');
+  if(!toggle||!form)return;
+  toggle.onclick=()=>{form.hidden=!form.hidden;toggle.setAttribute('aria-expanded',String(!form.hidden));if(!form.hidden)$('#payment-code-input').focus();};
+  $('#payment-code-input').oninput=()=>{delete state.codes[purpose];$('#code-feedback').textContent='';};
+  form.onsubmit=event=>{
+    event.preventDefault();
+    const code=$('#payment-code-input').value.trim();
+    if(!code){delete state.codes[purpose];$('#code-feedback').textContent='Enter your code.';$('#payment-code-input').focus();return;}
+    state.codes[purpose]=code;
+    $('#code-feedback').textContent=demo?'Preview only. Codes are verified during live checkout.':'Code added. It will be verified at checkout.';
+  };
+}
 function safeSquareUrl(value){try{const u=new URL(value);return u.protocol==='https:'&& !u.username&&!u.password&&(/(^|\.)squareup\.com$/.test(u.hostname)||/(^|\.)square\.link$/.test(u.hostname))?u.href:null;}catch{return null;}}
 async function invoke(body){
   const client=await getApi();const {data,error}=await client.functions.invoke('square-subscriptions',{body});
@@ -514,6 +533,8 @@ function openSquareCheckout(checkoutWindow,url){
 }
 async function startPayment(purpose){
   if(busy)return;
+  const promoCode=$('#payment-code-input')?.value.trim()||state.codes[purpose]||'';
+  if(promoCode)state.codes[purpose]=promoCode;
   if(!state.agreement || !state.previewApproved || (purpose==='hosting'&&!state.paid.development)){message('Approve your website preview and complete the agreement before payment. Development must be paid before hosting.');return;}
   if(demo){
     openModal(`<p class="tag">PREVIEW PAYMENT</p><h2 id="modal-title">${purpose==='development'?'Website development':state.plan==='standard'?'Standard hosting':'Business hosting'}</h2><div class="price-line"><strong>${money(purpose==='development'?CONFIG.development:CONFIG[state.plan])}</strong><span>${purpose==='development'?'one-time':'per month'}</span></div><p class="sub">This simulates a successful Square payment so you can review the next step. No money will be charged.</p><div class="modal-action">${primary('Simulate successful payment','simulate-payment')}</div>`);
@@ -537,10 +558,11 @@ async function startPayment(purpose){
     }
     const kind=purpose==='development'?'development':state.plan;
     const returnTo=new URL(location.href);returnTo.searchParams.set('project',state.project.id);returnTo.searchParams.set('square_checkout','return');returnTo.hash='';
-    const data=await invoke({action:'create-checkout',planKey:plans[kind],agreementId:agreement.id,projectId:state.project.id,returnUrl:returnTo.href});
+    const data=await invoke({action:'create-checkout',planKey:plans[kind],agreementId:agreement.id,projectId:state.project.id,returnUrl:returnTo.href,...(promoCode?{promoCode}:{})});
     const expectedPurpose=kind==='business'?'backend':kind;
     const url=safeSquareUrl(data?.checkoutUrl);
     if(!url || !data?.checkoutId || data.projectId!==state.project.id || data.agreementId!==agreement.id || data.purpose!==expectedPurpose)throw new Error('Square did not return a valid checkout linked to this website and agreement. No payment has been confirmed. Please contact your developer.');
+    if(promoCode&&data.promoCodeAccepted!==true)throw new Error('Your code could not be confirmed. No payment has been taken. Contact your developer before continuing.');
     state.sessions[purpose]=data.checkoutId;
     storage.set('steadyhands.checkout.pending.'+state.user.id+'.'+state.project.id,JSON.stringify({checkoutSessions:state.sessions,plan:state.plan==='business'?'backend':'standard'}));
     storage.set('steadyhands.checkout.url.'+data.checkoutId,url,true);
