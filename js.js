@@ -46,7 +46,7 @@ const storage = {
   set(key,value,session=false) { try { (session ? sessionStorage : localStorage).setItem(key,value); } catch {} },
   remove(key,session=false) { try { (session ? sessionStorage : localStorage).removeItem(key); } catch {} }
 };
-const blank = () => ({user:null,profile:null,salesPreview:null,salesChoices:[],hasCheckout:false,project:null,agreement:null,preview:null,previewApproved:false,sessions:{},checkoutHistory:{},codes:{},plan:'standard',paid:{development:false,hosting:false},documents:{},stage:0,submitted:null});
+const blank = () => ({user:null,profile:null,salesPreview:null,salesChoices:[],hasCheckout:false,project:null,agreement:null,preview:null,previewApproved:false,sessions:{},checkoutHistory:{},developmentWaived:false,codes:{},plan:'standard',paid:{development:false,hosting:false},documents:{},stage:0,submitted:null});
 let state = blank();
 let demo = new URL(location.href).searchParams.get('checkout_demo')==='1';
 const returnedFromPasswordReset=new URL(location.href).searchParams.get('reset')==='success';
@@ -474,7 +474,7 @@ async function forgotPassword(){
 }
 function paymentCode(purpose){
   const code=state.codes[purpose]||'';
-  return `<section class="payment-code"><button type="button" class="text-button" id="code-toggle" aria-expanded="${!!code}" aria-controls="payment-code-fields">Have a code?</button><form id="payment-code-fields" ${code?'':'hidden'}><label for="payment-code-input">Enter your code</label><div class="payment-code-row"><input id="payment-code-input" type="text" value="${esc(code)}" maxlength="80" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Enter your code"><button class="secondary" type="submit">Apply</button></div><small id="code-feedback" role="status">${code?'Code added. It will be verified at checkout.':''}</small></form></section>`;
+  return `<section class="payment-code"><button type="button" class="text-button" id="code-toggle" aria-expanded="${!!code}" aria-controls="payment-code-fields">Have a code?</button><form id="payment-code-fields" ${code?'':'hidden'}><label for="payment-code-input">Enter your code</label><div class="payment-code-row"><input id="payment-code-input" type="text" value="${esc(code)}" maxlength="80" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Enter your code"><button class="secondary" type="submit">Apply</button></div><small id="code-feedback" role="status">${code?(purpose==='development'?'Apply your code to waive the development fee.':'Code added. It will be verified at checkout.'):''}</small></form></section>`;
 }
 function paymentBlock(purpose){
   const exists=!!state.sessions[purpose];
@@ -490,7 +490,7 @@ function renderDevelopment(){
 }
 function renderHosting(){
   const locked=!!state.sessions.hosting;
-  $('#stage').innerHTML=`<div class="verified-badge">✓ Development payment ${demo?'previewed':'verified'}</div>`+title('PAYMENT 2 OF 2','Keep your website growing.','Choose the hosting and support that fit your business. Both plans include a team that stays with you.')+
+  $('#stage').innerHTML=`<div class="verified-badge">✓ ${state.developmentWaived?'Development fee waived by code':`Development payment ${demo?'previewed':'verified'}`}</div>`+title('PAYMENT 2 OF 2','Keep your website growing.','Choose the hosting and support that fit your business. Both plans include a team that stays with you.')+
     `<fieldset style="border:0;padding:0;margin:0"><legend class="hint">Choose one monthly hosting plan</legend><label class="plan"><div class="plan-head"><input type="radio" name="hosting" value="standard" ${state.plan==='standard'?'checked':''} ${locked?'disabled':''}><span class="plan-title">Standard</span><span class="plan-price">${money(CONFIG.standard)}<small>/month</small></span></div><p class="plan-kicker">The essentials, taken care of.</p><ul class="feature-list"><li>Keep your site running</li><li>Ongoing maintenance &amp; technical support</li><li>Help with website issues and updates</li><li>No surprising fees — extras need your approval</li></ul></label><label class="plan"><div class="plan-head"><input type="radio" name="hosting" value="business" ${state.plan==='business'?'checked':''} ${locked?'disabled':''}><span class="plan-title">Business <span class="recommended">Do more</span></span><span class="plan-price">${money(CONFIG.business)}<small>/month</small></span></div><p class="plan-kicker">Everything in Standard, plus tools to run your business.</p><ul class="feature-list"><li>Manage your website content</li><li>Send invoices &amp; estimates</li><li>Secure client logins</li><li>Approve reviews through your site</li><li>Online booking</li><li>Editable photo gallery</li></ul></label></fieldset><p class="billing-note">Monthly subscription, automatically renewed until canceled. Request cancellation through your portal or developer. Business tools are configured to your agreed website scope; third-party service charges, if any, are disclosed separately.</p>`+paymentBlock('hosting');
   root.querySelectorAll('[name="hosting"]').forEach(el=>el.onchange=()=>{state.plan=el.value;savePreview();$('#pay').innerHTML=(demo?'Preview payment':`Pay ${money(CONFIG[state.plan])}/month with Square`)+'<span class="arrow" aria-hidden="true">→</span>';});
   bindPayment('hosting');
@@ -502,13 +502,56 @@ function bindPayment(purpose){
   if(!toggle||!form)return;
   toggle.onclick=()=>{form.hidden=!form.hidden;toggle.setAttribute('aria-expanded',String(!form.hidden));if(!form.hidden)$('#payment-code-input').focus();};
   $('#payment-code-input').oninput=()=>{delete state.codes[purpose];$('#code-feedback').textContent='';};
-  form.onsubmit=event=>{
-    event.preventDefault();
+  form.onsubmit=async event=>{
+    event.preventDefault();if(busy)return;
     const code=$('#payment-code-input').value.trim();
     if(!code){delete state.codes[purpose];$('#code-feedback').textContent='Enter your code.';$('#payment-code-input').focus();return;}
+    if(purpose==='development'){
+      if(demo){$('#code-feedback').textContent='Codes can only be redeemed after signing in to live checkout.';return;}
+      const input=$('#payment-code-input'),apply=form.querySelector('[type="submit"]'),pay=$('#pay'),note=$('#code-feedback');
+      busy=true;input.disabled=true;apply.disabled=true;pay.disabled=true;note.textContent='Verifying code…';
+      try{
+        await redeemDevelopmentCode(code);
+        input.value='';delete state.codes.development;
+        chooseStage();render(true);
+        message('Code accepted. Your $100 development fee is waived. Choose your hosting plan.',true);
+      }catch(error){note.textContent=error.message||'Your code could not be verified. Try again.';}
+      finally{busy=false;if(input.isConnected)input.disabled=false;if(apply.isConnected)apply.disabled=false;if(pay.isConnected)pay.disabled=false;}
+      return;
+    }
     state.codes[purpose]=code;
     $('#code-feedback').textContent=demo?'Preview only. Codes are verified during live checkout.':'Code added. It will be verified at checkout.';
   };
+}
+function developmentComplete(){return state.paid.development||state.developmentWaived;}
+async function promoRequest(body){
+  const client=await getApi();
+  const {data,error}=await client.functions.invoke('portal-promo',{body:{...body,projectId:state.project.id,agreementId:state.agreement.id}});
+  if(error){let detail=error.message;try{const value=await error.context?.json();detail=value?.message||value?.error||detail;}catch{}throw new Error(detail||'Code verification is unavailable. Try again.');}
+  if(!data||data.error||data.message)throw new Error(data?.message||data?.error||'Code verification is unavailable. Try again.');
+  if(data.projectId&&data.projectId!==state.project.id)throw new Error('The code was not verified for this website.');
+  return data;
+}
+async function refreshDevelopmentWaiver(){
+  state.developmentWaived=false;
+  const status=await promoRequest({action:'status'});
+  state.developmentWaived=status.developmentBypass===true;
+  return state.developmentWaived;
+}
+async function redeemDevelopmentCode(code){
+  await verifiedUser();await assertPreviewApproval();
+  const agreement=await loadAgreement();
+  if(!agreement||agreement.id!==state.agreement.id)throw new Error('Sign your website agreement before applying a code.');
+  const result=await promoRequest({action:'redeem',purpose:'local_development',code});
+  if(result.valid!==true)throw new Error('This code is invalid or is not valid for the development fee.');
+  if(!await refreshDevelopmentWaiver())throw new Error('The code was checked, but the development waiver was not confirmed. Please contact your developer.');
+}
+async function verifyDevelopment(){
+  let paymentError;
+  try{if(await verifyOne('development')){state.developmentWaived=false;return true;}}catch(error){paymentError=error;}
+  try{if(await refreshDevelopmentWaiver())return true;}catch{}
+  if(paymentError)throw paymentError;
+  return false;
 }
 function safeSquareUrl(value){try{const u=new URL(value);return u.protocol==='https:'&& !u.username&&!u.password&&(/(^|\.)squareup\.com$/.test(u.hostname)||/(^|\.)square\.link$/.test(u.hostname))?u.href:null;}catch{return null;}}
 async function invoke(body){
@@ -533,8 +576,9 @@ function openSquareCheckout(checkoutWindow,url){
 async function startPayment(purpose){
   if(busy)return;
   const promoCode=$('#payment-code-input')?.value.trim()||state.codes[purpose]||'';
-  if(promoCode)state.codes[purpose]=promoCode;
-  if(!state.agreement || !state.previewApproved || (purpose==='hosting'&&!state.paid.development)){message('Approve your website preview and complete the agreement before payment. Development must be paid before hosting.');return;}
+  if(purpose==='development'&&promoCode&&!demo){$('#payment-code-fields').requestSubmit();return;}
+  if(promoCode&&purpose==='hosting')state.codes[purpose]=promoCode;
+  if(!state.agreement || !state.previewApproved || (purpose==='hosting'&&!developmentComplete())){message('Approve your website preview and complete the agreement before payment. Development must be paid before hosting.');return;}
   if(demo){
     openModal(`<p class="tag">PREVIEW PAYMENT</p><h2 id="modal-title">${purpose==='development'?'Website development':state.plan==='standard'?'Standard hosting':'Business hosting'}</h2><div class="price-line"><strong>${money(purpose==='development'?CONFIG.development:CONFIG[state.plan])}</strong><span>${purpose==='development'?'one-time':'per month'}</span></div><p class="sub">This simulates a successful Square payment so you can review the next step. No money will be charged.</p><div class="modal-action">${primary('Simulate successful payment','simulate-payment')}</div>`);
     $('#simulate-payment').onclick=()=>{state.paid[purpose]=true;state.sessions[purpose]='preview-'+purpose;closeModal();go(purpose==='development'?2:3);};return;
@@ -551,6 +595,7 @@ async function startPayment(purpose){
     const agreement=await loadAgreement();if(!agreement||agreement.id!==state.agreement.id)throw new Error('Your website agreement could not be verified. Please contact your developer.');
     // An unpaid checkout never blocks a fresh link. Keep every reference so
     // payment in an earlier tab can still be verified after a later link opens.
+    if(purpose==='hosting'&&!await verifyDevelopment())throw new Error('Your development payment or fee waiver could not be verified.');
     const kind=purpose==='development'?'development':state.plan;
     const returnTo=new URL(location.href);returnTo.searchParams.set('project',state.project.id);returnTo.searchParams.set('square_checkout','return');returnTo.hash='';
     const data=await invoke({action:'create-checkout',planKey:plans[kind],agreementId:agreement.id,projectId:state.project.id,returnUrl:returnTo.href,...(promoCode?{promoCode}:{})});
@@ -605,8 +650,8 @@ async function hydratePayments(){
   }
   state.plan=['backend','standard'].includes(draft.plan)?(draft.plan==='backend'?'business':'standard'):(state.project.details?.hosting_plan==='business'?'business':'standard');
   state.paid={development:false,hosting:false};
-  if(state.sessions.development)await verifyOne('development');
-  if(state.paid.development&&state.sessions.hosting)await verifyOne('hosting');
+  await verifyDevelopment();
+  if(developmentComplete()&&state.sessions.hosting)await verifyOne('hosting');
 }
 async function checkPayments(manual=false){
   if(verifying||busy||demo||!state.project)return;
@@ -614,8 +659,8 @@ async function checkPayments(manual=false){
   const oldStage=state.stage;
   try{
     await verifiedUser();
-    if(state.sessions.development&&!state.paid.development)await verifyOne('development');
-    if(state.paid.development&&state.sessions.hosting&&!state.paid.hosting)await verifyOne('hosting');
+    if(!state.paid.development)await verifyDevelopment();
+    if(developmentComplete()&&state.sessions.hosting&&!state.paid.hosting)await verifyOne('hosting');
     chooseStage();
     if(state.stage!==oldStage)render(true);
     else if(manual)message('Your payment is not confirmed yet. Complete the Square checkout, then check again. Confirmation can take a moment.');
@@ -624,9 +669,9 @@ async function checkPayments(manual=false){
 }
 function receipt(purpose){const u=state.documents[purpose];return u?`<a class="receipt-link" href="${esc(u)}" target="_blank" rel="noopener noreferrer">View Square receipt ↗</a>`:'';}
 function renderConfirmation(){
-  if(!state.paid.development||!state.paid.hosting){chooseStage();render();return;}
-  $('#stage').innerHTML=`<div class="step-icon success-icon" aria-hidden="true">✓</div>`+title(demo?'PREVIEW CONFIRMATION':'PAYMENT CONFIRMED',demo?'Your preview payments are complete.':'We’ve received your payments.',demo?'This is how your confirmation will look after verified payments. No payment was taken.':'Thank you! Your website agreement and both payments are complete. Let’s finish with a few next steps.')+
-    `<div class="summary-list"><div class="summary-row"><span>Website</span><strong>${esc(state.project?.display_name)}</strong></div><div class="summary-row"><span><span class="check">✓</span> Website preview</span><strong>Approved</strong></div><div class="summary-row"><span><span class="check">✓</span> Website agreement</span><strong>Accepted &amp; signed</strong></div><div class="summary-row"><span><span class="check">✓</span> Development</span><strong>${money(CONFIG.development)} · ${demo?'Previewed':'Paid'}${receipt('development')}</strong></div><div class="summary-row"><span><span class="check">✓</span> ${state.plan==='business'?'Business':'Standard'} hosting</span><strong>${money(CONFIG[state.plan])}/month · ${demo?'Previewed':'Paid'}${receipt('hosting')}</strong></div></div>`+primary('Next: your website details','next-domain')+'<p class="button-note">One last thing — tell us the domain you’d love to use.</p>';
+  if(!developmentComplete()||!state.paid.hosting){chooseStage();render();return;}
+  $('#stage').innerHTML=`<div class="step-icon success-icon" aria-hidden="true">✓</div>`+title(demo?'PREVIEW CONFIRMATION':'PAYMENT CONFIRMED',demo?'Your preview payments are complete.':state.developmentWaived?'Your website setup is confirmed.':'We’ve received your payments.',demo?'This is how your confirmation will look after verified payments. No payment was taken.':state.developmentWaived?'Your agreement, development fee waiver, and hosting payment are confirmed. Let’s finish with a few next steps.':'Thank you! Your website agreement and both payments are complete. Let’s finish with a few next steps.')+
+    `<div class="summary-list"><div class="summary-row"><span>Website</span><strong>${esc(state.project?.display_name)}</strong></div><div class="summary-row"><span><span class="check">✓</span> Website preview</span><strong>Approved</strong></div><div class="summary-row"><span><span class="check">✓</span> Website agreement</span><strong>Accepted &amp; signed</strong></div><div class="summary-row"><span><span class="check">✓</span> Development</span><strong>${state.developmentWaived?'$0 · Waived by code':`${money(CONFIG.development)} · ${demo?'Previewed':'Paid'}${receipt('development')}`}</strong></div><div class="summary-row"><span><span class="check">✓</span> ${state.plan==='business'?'Business':'Standard'} hosting</span><strong>${money(CONFIG[state.plan])}/month · ${demo?'Previewed':'Paid'}${receipt('hosting')}</strong></div></div>`+primary('Next: your website details','next-domain')+'<p class="button-note">One last thing — tell us the domain you’d love to use.</p>';
   $('#next-domain').onclick=()=>go(4);
 }
 function renderDomain(){
@@ -647,11 +692,11 @@ async function submitDomain(event){
   if(!domain){message('Enter a valid domain, such as yourbusiness.com. Leave out paths, spaces, and email addresses.');$('#domain').focus();return;}
   const button=$('#submit-domain');button.disabled=true;button.textContent='Submitting your request…';busy=true;message('');
   try{
-    if(!state.agreement||!state.previewApproved||!state.paid.development||!state.paid.hosting)throw new Error('Your agreement and both payments must be confirmed first.');
+    if(!state.agreement||!state.previewApproved||!developmentComplete()||!state.paid.hosting)throw new Error('Your agreement, development payment or waiver, and hosting payment must be confirmed first.');
     if(!demo){
       await verifiedUser();
       await assertPreviewApproval();
-      if(!await loadAgreement()||!await verifyOne('development')||!await verifyOne('hosting'))throw new Error('Could not verify your agreement and payments. Please contact your developer.');
+      if(!await loadAgreement()||!await verifyDevelopment()||!await verifyOne('hosting'))throw new Error('Could not verify your agreement and payments. Please contact your developer.');
       // Re-read so this write preserves the latest project brief and other details.
       state.project=await checked(api.from('portal_website_projects').select('*').eq('id',state.project.id).eq('user_id',state.user.id).single());
     }
@@ -804,7 +849,7 @@ function chooseStage(){
   if(!state.user){state.stage=0;return;}
   if(!state.previewApproved){state.stage=0.5;return;}
   if(!state.agreement){state.stage=0.75;return;}
-  if(!state.paid.development){state.stage=1;return;}
+  if(!developmentComplete()){state.stage=1;return;}
   if(!state.paid.hosting){state.stage=2;return;}
   if(completedProject(state.project)){state.submitted=state.project.details.__checkout_submission;state.stage=5;}else state.stage=3;
 }

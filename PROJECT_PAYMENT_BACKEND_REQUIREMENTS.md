@@ -16,9 +16,13 @@ Run `PROJECT_PURCHASE_SETUP.sql` once in Supabase SQL Editor. Replace only the c
 
 ## Optional codes in the onboarding popup
 
-The payment popup now accepts a code separately for development and hosting. Applying a code stages it in memory; it does not change prices or mark a payment verified. `create-checkout` includes optional `promoCode`. The backend must validate the code for the authenticated user, project, agreement, payment purpose and selected plan, calculate the amount server-side, and create the discounted Square checkout. Reject invalid/expired/ineligible codes without creating a checkout. Return `promoCodeAccepted: true` only when the code has actually been applied to the returned checkout. The frontend will not open a coded checkout without that acknowledgment. Requests without a code retain the existing contract. Clients can enter a different code before opening another checkout. Each checkout must keep its own server-validated code and amount.
+Development codes waive the $100 development fee rather than discounting a Square checkout. Apply calls the existing authenticated `portal-promo` service with `{action:'redeem',purpose:'local_development',code,projectId,agreementId}`, then calls `{action:'status',projectId,agreementId}`. The existing `valid` redemption flag and `developmentBypass` status flag must both be `true` before the popup moves directly to hosting. If returned, `projectId` must match the selected website. Code values are never embedded in source, saved to browser storage, or stored as payment proof. The secret is compared inside the Edge Function, not in browser JavaScript.
 
-This repository does not contain the deployed Edge Function; its code validation and response support must be deployed separately before live code redemption works.
+The popup reloads the waiver from server status, rechecks it before creating hosting checkout and before final submission, and labels development as “$0 · Waived by code” rather than “Paid.” Normal Square development payments remain supported. Hosting is still required and verified separately. `square-subscriptions` must recognize the same server-owned waiver when enforcing development prerequisites; browser metadata must never authorize a waiver.
+
+Hosting discount codes retain their existing separate path: optional `promoCode` in `create-checkout`, server-calculated pricing and `promoCodeAccepted: true` before opening the coded Square link.
+
+The deployed `portal-promo` and portal-specific `square-subscriptions` sources are absent from this repository. The redemption purpose above follows the existing `local_hosting` naming convention; confirm it against the deployed function. Live testing requires access to that function to confirm its secret variable name, accepted purpose, durable waiver status and hosting prerequisite checks. Do not paste the secret value into this repository.
 
 ## Repeated checkout links
 
