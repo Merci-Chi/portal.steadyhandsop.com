@@ -542,7 +542,7 @@ async function redeemDevelopmentCode(code){
   await verifiedUser();await assertPreviewApproval();
   const agreement=await loadAgreement();
   if(!agreement||agreement.id!==state.agreement.id)throw new Error('Sign your website agreement before applying a code.');
-  const result=await promoRequest({action:'redeem',purpose:'local_development',code});
+  const result=await promoRequest({action:'redeem',purpose:'development_bypass',code});
   if(result.valid!==true)throw new Error('This code is invalid or is not valid for the development fee.');
   if(!await refreshDevelopmentWaiver())throw new Error('The code was checked, but the development waiver was not confirmed. Please contact your developer.');
 }
