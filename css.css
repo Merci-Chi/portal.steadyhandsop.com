@@ -23,3 +23,15 @@
 @media(max-width:480px){#steady-checkout .popup-brand{margin-inline:-18px;padding:14px 18px}}
 
 #steady-checkout .confirmation-actions{display:grid;gap:12px;margin-top:14px}#steady-checkout .confirmation-actions .text-button{min-height:44px}
+
+/* Payment status and optional checkout codes. */
+#steady-checkout .payment-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:17px}
+#steady-checkout .payment-heading .verified-badge,#steady-checkout .payment-heading .tag{margin:0;white-space:nowrap}
+#steady-checkout .payment-code{margin:20px 0}
+#steady-checkout .payment-code [hidden]{display:none}
+#steady-checkout .payment-code form{margin-top:10px}
+#steady-checkout .payment-code label{display:block;font-size:11px;font-weight:700;margin-bottom:8px}
+#steady-checkout .payment-code-row{display:flex;gap:8px}
+#steady-checkout .payment-code-row input{flex:1;min-width:0;width:100%;height:47px;border:1px solid #ccdaeb;border-radius:10px;padding:12px;font:inherit;font-size:16px;background:#fff;color:#122e56}
+#steady-checkout .payment-code-row .secondary{width:auto;min-height:47px;padding:10px 16px}
+#steady-checkout .payment-code small{display:block;font-size:10px;line-height:1.7;color:#6d86a3;margin-top:8px}
