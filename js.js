@@ -558,8 +558,9 @@ function dismissOnboarding(){
     const main=document.querySelector('#main');
     if(main){
       main.innerHTML='<section class="panel empty-workspace"><h1>Welcome to Steady Hands</h1><p>Continue signing in or setting up your website whenever you’re ready.</p><button type="button" class="primary" id="resume-setup">Continue setup</button></section>';
-      $('#resume-setup').onclick=resumeOnboarding;
-      $('#resume-setup').focus();
+      const resume=main.querySelector('#resume-setup');
+      resume.onclick=resumeOnboarding;
+      resume.focus();
     }
   }
 }
