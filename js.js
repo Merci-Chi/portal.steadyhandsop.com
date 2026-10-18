@@ -645,7 +645,8 @@ async function continueAfterProfile(){
 async function ensureProject(name){
   if(state.project){rememberProject();return;}
   const details={business_name:name,hosting_plan:'standard',__checkout_source:'portal-popup',__checkout_entry_preview:entryContext.preview||null,...(entryContext.sitekey?{__checkout_sitekey:entryContext.sitekey}:{}),pages:[],features:[],...(state.salesPreview?{__sales_sale_id:state.salesPreview.sale_id}:{})};
-  state.project=await checked(api.from('portal_website_projects').insert({user_id:state.user.id,display_name:name,status:'awaiting_payment',details}).select().single());
+  // Create the same draft as the regular portal. Approval below submits it for payment.
+  state.project=await checked(api.from('portal_website_projects').insert({user_id:state.user.id,display_name:name,status:'draft',details}).select().single());
   ownedProjects.unshift(state.project);rememberProject();
 }
 function chooseStage(){
