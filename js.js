@@ -46,7 +46,7 @@ const storage = {
   set(key,value,session=false) { try { (session ? sessionStorage : localStorage).setItem(key,value); } catch {} },
   remove(key,session=false) { try { (session ? sessionStorage : localStorage).removeItem(key); } catch {} }
 };
-const blank = () => ({user:null,profile:null,salesPreview:null,salesChoices:[],hasCheckout:false,project:null,agreement:null,preview:null,previewApproved:false,sessions:{},codes:{},plan:'standard',paid:{development:false,hosting:false},documents:{},stage:0,submitted:null});
+const blank = () => ({user:null,profile:null,salesPreview:null,salesChoices:[],hasCheckout:false,project:null,agreement:null,preview:null,previewApproved:false,sessions:{},checkoutHistory:{},codes:{},plan:'standard',paid:{development:false,hosting:false},documents:{},stage:0,submitted:null});
 let state = blank();
 let demo = new URL(location.href).searchParams.get('checkout_demo')==='1';
 const returnedFromPasswordReset=new URL(location.href).searchParams.get('reset')==='success';
@@ -473,14 +473,13 @@ async function forgotPassword(){
   try{const client=await getApi();const {error}=await client.auth.resetPasswordForEmail(email.value.trim(),{redirectTo:'https://portal.steadyhandsop.com/reset-password.html'});if(error)throw error;message('Password reset requested. If this address has an eligible account, check its inbox and spam folder for instructions.',true);}catch(e){message(e.message);}finally{busy=false;}
 }
 function paymentCode(purpose){
-  if(state.sessions[purpose])return '<p class="hint">A checkout is already pending. Contact your developer to change its code before paying.</p>';
   const code=state.codes[purpose]||'';
   return `<section class="payment-code"><button type="button" class="text-button" id="code-toggle" aria-expanded="${!!code}" aria-controls="payment-code-fields">Have a code?</button><form id="payment-code-fields" ${code?'':'hidden'}><label for="payment-code-input">Enter your code</label><div class="payment-code-row"><input id="payment-code-input" type="text" value="${esc(code)}" maxlength="80" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Enter your code"><button class="secondary" type="submit">Apply</button></div><small id="code-feedback" role="status">${code?'Code added. It will be verified at checkout.':''}</small></form></section>`;
 }
 function paymentBlock(purpose){
   const exists=!!state.sessions[purpose];
   return paymentCode(purpose)+(demo?'<div class="demo-payment">Preview payment only. No Square checkout or charge will be created.</div>':'')+
-    primary(demo?'Preview payment':exists?'Return to Square checkout':purpose==='development'?`Pay ${money(CONFIG.development)} with Square`:`Pay ${money(CONFIG[state.plan])}/month with Square`,'pay')+
+    primary(demo?'Preview payment':exists?'Open another Square checkout':purpose==='development'?`Pay ${money(CONFIG.development)} with Square`:`Pay ${money(CONFIG[state.plan])}/month with Square`,'pay')+
     (exists&&!demo?'<button type="button" class="secondary verify-button" id="verify-payment">I’ve paid — check payment status</button>':'')+
     `<div class="payment-note">${icons.lock}<span>${demo?'Simulated payments are clearly marked throughout this preview.':'Square’s secure checkout opens in a new tab. Keep this portal open; we’ll verify your payment when you return.'}</span></div><p id="message" class="message" role="status"></p>`;
 }
@@ -520,7 +519,7 @@ async function invoke(body){
 }
 async function persistPurchase(){
   const client=await getApi();await verifiedUser();
-  const drafts={...(state.user.user_metadata?.portal_project_purchase_drafts||{}),[state.project.id]:{plan:state.plan==='business'?'backend':'standard',checkoutSessions:state.sessions,updated_at:new Date().toISOString()}};
+  const drafts={...(state.user.user_metadata?.portal_project_purchase_drafts||{}),[state.project.id]:{plan:state.plan==='business'?'backend':'standard',checkoutSessions:state.sessions,checkoutHistory:state.checkoutHistory,updated_at:new Date().toISOString()}};
   const {data,error}=await client.auth.updateUser({data:{portal_project_purchase_drafts:drafts}});
   if(error)throw error;state.user=data.user;
 }
@@ -550,12 +549,8 @@ async function startPayment(purpose){
     await verifiedUser();
     await assertPreviewApproval();
     const agreement=await loadAgreement();if(!agreement||agreement.id!==state.agreement.id)throw new Error('Your website agreement could not be verified. Please contact your developer.');
-    if(state.sessions[purpose]){
-      const already=await verifyOne(purpose);if(already){chooseStage();render(true);return;}
-      const pending=safeSquareUrl(storage.get('steadyhands.checkout.url.'+state.sessions[purpose],true));
-      if(pending){await persistPurchase();openSquareCheckout(checkoutWindow,pending);checkoutOpened=true;return;}
-      throw new Error('A checkout is already pending for this website. Check payment status or contact your developer to recover the link before starting another payment.');
-    }
+    // An unpaid checkout never blocks a fresh link. Keep every reference so
+    // payment in an earlier tab can still be verified after a later link opens.
     const kind=purpose==='development'?'development':state.plan;
     const returnTo=new URL(location.href);returnTo.searchParams.set('project',state.project.id);returnTo.searchParams.set('square_checkout','return');returnTo.hash='';
     const data=await invoke({action:'create-checkout',planKey:plans[kind],agreementId:agreement.id,projectId:state.project.id,returnUrl:returnTo.href,...(promoCode?{promoCode}:{})});
@@ -563,29 +558,51 @@ async function startPayment(purpose){
     const url=safeSquareUrl(data?.checkoutUrl);
     if(!url || !data?.checkoutId || data.projectId!==state.project.id || data.agreementId!==agreement.id || data.purpose!==expectedPurpose)throw new Error('Square did not return a valid checkout linked to this website and agreement. No payment has been confirmed. Please contact your developer.');
     if(promoCode&&data.promoCodeAccepted!==true)throw new Error('Your code could not be confirmed. No payment has been taken. Contact your developer before continuing.');
+    state.checkoutHistory[purpose]=[...new Set([...checkoutIds(purpose),data.checkoutId])];
     state.sessions[purpose]=data.checkoutId;
-    storage.set('steadyhands.checkout.pending.'+state.user.id+'.'+state.project.id,JSON.stringify({checkoutSessions:state.sessions,plan:state.plan==='business'?'backend':'standard'}));
+    storage.set('steadyhands.checkout.pending.'+state.user.id+'.'+state.project.id,JSON.stringify({checkoutSessions:state.sessions,checkoutHistory:state.checkoutHistory,plan:state.plan==='business'?'backend':'standard'}));
     storage.set('steadyhands.checkout.url.'+data.checkoutId,url,true);
     // Save the checkout reference before opening Square. It is never payment proof.
     await persistPurchase();
     openSquareCheckout(checkoutWindow,url);checkoutOpened=true;
   }catch(e){message(e.message||'Could not start Square checkout. Please try again.');if(state.sessions[purpose])renderPaymentFailure(e.message);}
-  finally{if(!checkoutOpened&&checkoutWindow&&!checkoutWindow.closed)checkoutWindow.close();busy=false;if(button.isConnected){button.disabled=false;button.innerHTML=(state.sessions[purpose]?'Return to Square checkout':'Try Square checkout again')+'<span class="arrow" aria-hidden="true">→</span>';}}
+  finally{if(!checkoutOpened&&checkoutWindow&&!checkoutWindow.closed)checkoutWindow.close();busy=false;if(button.isConnected){button.disabled=false;button.innerHTML=(state.sessions[purpose]?'Open another Square checkout':'Try Square checkout again')+'<span class="arrow" aria-hidden="true">→</span>';}}
 }
 function renderPaymentFailure(text){render();message(text);}
+function checkoutIds(purpose){
+  return [...new Set([state.sessions[purpose],...(Array.isArray(state.checkoutHistory[purpose])?state.checkoutHistory[purpose]:[])].filter(id=>typeof id==='string'&&id))];
+}
 async function verifyOne(purpose){
-  if(!state.sessions[purpose])return false;
-  const data=await invoke({action:'verify-checkout',checkoutId:state.sessions[purpose],projectId:state.project.id,purpose});
-  if(data?.projectId!==state.project.id || data?.purpose!==purpose || (data.checkoutId&&data.checkoutId!==state.sessions[purpose]))throw new Error('Payment verification did not match this website. Contact your developer.');
-  state.paid[purpose]=data.verified===true;
-  state.documents[purpose]=safeSquareUrl(data.invoiceUrl)||safeSquareUrl(data.receiptUrl);
-  return state.paid[purpose];
+  const ids=checkoutIds(purpose);if(!ids.length)return false;
+  const results=await Promise.allSettled(ids.map(async checkoutId=>{
+    const data=await invoke({action:'verify-checkout',checkoutId,projectId:state.project.id,purpose});
+    if(data?.projectId!==state.project.id || data?.purpose!==purpose || (data.checkoutId&&data.checkoutId!==checkoutId))throw new Error('Payment verification did not match this website. Contact your developer.');
+    return {checkoutId,data};
+  }));
+  const verified=results.find(result=>result.status==='fulfilled'&&result.value.data.verified===true)?.value;
+  state.paid[purpose]=!!verified;
+  if(verified){
+    state.sessions[purpose]=verified.checkoutId;
+    state.documents[purpose]=safeSquareUrl(verified.data.invoiceUrl)||safeSquareUrl(verified.data.receiptUrl);
+    return true;
+  }
+  const failed=results.find(result=>result.status==='rejected');if(failed)throw failed.reason;
+  return false;
 }
 async function hydratePayments(){
   let backup={};try{backup=JSON.parse(storage.get('steadyhands.checkout.pending.'+state.user.id+'.'+state.project.id)||'{}');}catch{}
   const remote=state.user.user_metadata?.portal_project_purchase_drafts?.[state.project.id]||{};
   const draft={...backup,...remote,checkoutSessions:{...(backup.checkoutSessions||{}),...(remote.checkoutSessions||{})}};
   state.sessions=draft.checkoutSessions&&typeof draft.checkoutSessions==='object'?{...draft.checkoutSessions}:{};
+  state.checkoutHistory={};
+  for(const purpose of ['development','hosting']){
+    state.checkoutHistory[purpose]=[...new Set([
+      ...(Array.isArray(backup.checkoutHistory?.[purpose])?backup.checkoutHistory[purpose]:[]),
+      ...(Array.isArray(remote.checkoutHistory?.[purpose])?remote.checkoutHistory[purpose]:[]),
+      backup.checkoutSessions?.[purpose],remote.checkoutSessions?.[purpose]
+    ].filter(id=>typeof id==='string'&&id))];
+    if(!state.sessions[purpose]&&state.checkoutHistory[purpose].length)state.sessions[purpose]=state.checkoutHistory[purpose].at(-1);
+  }
   state.plan=['backend','standard'].includes(draft.plan)?(draft.plan==='backend'?'business':'standard'):(state.project.details?.hosting_plan==='business'?'business':'standard');
   state.paid={development:false,hosting:false};
   if(state.sessions.development)await verifyOne('development');
