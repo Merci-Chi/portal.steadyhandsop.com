@@ -11,8 +11,13 @@
 
 
 /* Keep dismissal visible even when a long setup step is scrolled. */
-#steady-checkout .popup-dismiss-bar{position:sticky;top:-21px;z-index:5;display:flex;justify-content:flex-end;margin:-21px -23px 12px;padding:6px 10px;background:#f8fbff;border-bottom:1px solid #dce7f4}
-#steady-checkout #popup-close{display:grid;place-items:center;width:44px;height:44px;min-height:44px;padding:0;border:1px solid #d6e4f5;border-radius:50%;background:#fff;color:#173459;font:28px/1 Arial,sans-serif;cursor:pointer}
-#steady-checkout #popup-close:hover{background:#edf5ff}
-#steady-checkout #popup-close:focus-visible{outline:3px solid #247bed;outline-offset:2px}
-@media(max-width:480px){#steady-checkout .popup-dismiss-bar{top:-18px;margin:-18px -18px 12px}}
+/* Keep the brand and close control together while the dialog body scrolls. */
+#steady-checkout #onboarding-dialog{padding-top:0}
+#steady-checkout .popup-brand{position:sticky;top:0;z-index:5;margin:0 -23px 20px;padding:16px 23px;background:#f8fbff}
+#steady-checkout .popup-brand>div{margin-right:auto}
+#steady-checkout #popup-signout{margin-left:0}
+#steady-checkout #popup-close{display:grid;place-items:center;flex-shrink:0;width:44px;height:44px;min-height:44px;padding:0;border:0;border-radius:0;background:none;color:#173459;font:28px/1 Arial,sans-serif;cursor:pointer}
+#steady-checkout #popup-close:hover{color:#247bed;background:none}
+#steady-checkout #popup-close:focus-visible{outline:3px solid var(--bright);outline-offset:0}
+#steady-checkout #account-welcome h2{scroll-margin-top:90px}
+@media(max-width:480px){#steady-checkout .popup-brand{margin-inline:-18px;padding:14px 18px}}
