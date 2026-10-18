@@ -21,3 +21,5 @@
 #steady-checkout #popup-close:focus-visible{outline:3px solid var(--bright);outline-offset:0}
 #steady-checkout #account-welcome h2{scroll-margin-top:90px}
 @media(max-width:480px){#steady-checkout .popup-brand{margin-inline:-18px;padding:14px 18px}}
+
+#steady-checkout .confirmation-actions{display:grid;gap:12px;margin-top:14px}#steady-checkout .confirmation-actions .text-button{min-height:44px}
