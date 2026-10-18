@@ -16,13 +16,13 @@ Run `PROJECT_PURCHASE_SETUP.sql` once in Supabase SQL Editor. Replace only the c
 
 ## Optional codes in the onboarding popup
 
-Development codes waive the $100 development fee rather than discounting a Square checkout. Apply calls the existing authenticated `portal-promo` service with `{action:'redeem',purpose:'local_development',code,projectId,agreementId}`, then calls `{action:'status',projectId,agreementId}`. The existing `valid` redemption flag and `developmentBypass` status flag must both be `true` before the popup moves directly to hosting. If returned, `projectId` must match the selected website. Code values are never embedded in source, saved to browser storage, or stored as payment proof. The secret is compared inside the Edge Function, not in browser JavaScript.
+Development codes waive the $100 development fee rather than discounting a Square checkout. Apply calls the existing authenticated `portal-promo` service with `{action:'redeem',purpose:'development_bypass',code,projectId,agreementId}`, then calls `{action:'status',projectId,agreementId}`. The existing `valid` redemption flag and `developmentBypass` status flag must both be `true` before the popup moves directly to hosting. If returned, `projectId` must match the selected website. Code values are never embedded in source, saved to browser storage, or stored as payment proof. The secret is compared inside the Edge Function, not in browser JavaScript.
 
 The popup reloads the waiver from server status, rechecks it before creating hosting checkout and before final submission, and labels development as “$0 · Waived by code” rather than “Paid.” Normal Square development payments remain supported. Hosting is still required and verified separately. `square-subscriptions` must recognize the same server-owned waiver when enforcing development prerequisites; browser metadata must never authorize a waiver.
 
 Hosting discount codes retain their existing separate path: optional `promoCode` in `create-checkout`, server-calculated pricing and `promoCodeAccepted: true` before opening the coded Square link.
 
-The deployed `portal-promo` and portal-specific `square-subscriptions` sources are absent from this repository. The redemption purpose above follows the existing `local_hosting` naming convention; confirm it against the deployed function. Live testing requires access to that function to confirm its secret variable name, accepted purpose, durable waiver status and hosting prerequisite checks. Do not paste the secret value into this repository.
+The deployed `portal-promo` and portal-specific `square-subscriptions` sources are absent from this repository. The redemption purpose `development_bypass` matches the original portal integration in commit `39a1616`; `local_development` is not supported. Live testing requires access to that function to confirm its secret variable name, accepted purpose, durable waiver status and hosting prerequisite checks. Do not paste the secret value into this repository.
 
 ## Repeated checkout links
 
