@@ -97,6 +97,11 @@ function render(focus=false) {
   ({'0':renderAccount,'0.1':renderProfile,'0.25':renderSalesChoice,'0.5':renderPreview,'0.75':renderAgreement,'1':renderDevelopment,'2':renderHosting,'3':renderConfirmation,'4':renderDomain,'5':renderDone})[state.stage]();
   if(focus) focusStage();
   if(!demo && (state.stage===1||state.stage===2) && Object.keys(state.sessions).length){poll=setInterval(()=>{if(document.visibilityState==='visible')checkPayments(false);},12000);}
+  if(!demo&&new URL(location.href).searchParams.get('square_checkout')==='return'&&(state.stage===1||state.stage===2)){
+    message('Returned from Square. Checking your payment status automatically. If you were charged, do not open another checkout.');
+    const cleanUrl=new URL(location.href);cleanUrl.searchParams.delete('square_checkout');history.replaceState(history.state,'',cleanUrl.href);
+    queueMicrotask(()=>checkPayments(true));
+  }
   savePreview();
 }
 function go(stage){state.stage=stage;render(true);}
@@ -569,7 +574,7 @@ async function persistPurchase(){
 function openSquareCheckout(checkoutWindow,url){
   if(checkoutWindow&&!checkoutWindow.closed)checkoutWindow.location.replace(url);
   render();
-  message(checkoutWindow&&!checkoutWindow.closed?'Square checkout opened in a new tab. Return here after paying.':'Your browser blocked the checkout tab. Use the link below to open it.');
+  message(checkoutWindow&&!checkoutWindow.closed?'Square checkout opened in a new tab. Return here after paying. If Square charges you, do not pay a second time while verification is pending.':'Your browser blocked the checkout tab. Use the link below to open it.');
   const link=document.createElement('a');link.href=url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='Open Square checkout in a new tab';link.style.display='block';
   $('#message').appendChild(link);
 }
@@ -663,8 +668,8 @@ async function checkPayments(manual=false){
     if(developmentComplete()&&state.sessions.hosting&&!state.paid.hosting)await verifyOne('hosting');
     chooseStage();
     if(state.stage!==oldStage)render(true);
-    else if(manual)message('Your payment is not confirmed yet. Complete the Square checkout, then check again. Confirmation can take a moment.');
-  }catch(e){if(manual)message(e.message||'Payment verification is temporarily unavailable. Please try again.');}
+    else if(manual)message('We could not confirm this Square payment yet. If Square already charged you, do not pay again. We will keep checking; contact support with your Square receipt if this continues.');
+  }catch(e){if(manual)message('Payment verification is temporarily unavailable: '+(e.message||'Please try again.')+' If Square charged you, do not pay again.');}
   finally{verifying=false;if(button?.isConnected){button.disabled=false;button.textContent='I’ve paid — check payment status';}}
 }
 function receipt(purpose){const u=state.documents[purpose];return u?`<a class="receipt-link" href="${esc(u)}" target="_blank" rel="noopener noreferrer">View Square receipt ↗</a>`:'';}
@@ -921,7 +926,14 @@ $('#onboarding-dialog').addEventListener('click',e=>{
 $('#popup-signout').onclick=logout;
 $('#preview-flow').onclick=()=>{if(busy)return;demo=true;state=blank();authMode='signup';render(true);};
 $('#leave-demo').onclick=()=>{if(busy)return;demo=false;state=blank();authMode='signup';render(true);};
-window.addEventListener('focus',()=>{if(!demo&&(state.stage===1||state.stage===2))checkPayments(false);});
+// Recheck when returning from Square, including mobile browsers that restore a tab
+// with pageshow/visibilitychange instead of firing a window focus event.
+function recheckReturnedSquarePayment(){
+  if(!demo&&(state.stage===1||state.stage===2))checkPayments(false);
+}
+window.addEventListener('focus',recheckReturnedSquarePayment);
+window.addEventListener('pageshow',recheckReturnedSquarePayment);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')recheckReturnedSquarePayment();});
 async function startUnifiedPortal(){
   await ensurePortalAccess(portalSupabase);
   await import('./portal.js?v=20261017-unified-popups');
